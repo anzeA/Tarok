@@ -1,8 +1,10 @@
+import gc
 import os
 import random
 import time
 import warnings
 from copy import deepcopy
+from datetime import datetime
 from enum import Enum
 
 import numpy as np
@@ -286,7 +288,7 @@ class Nevronski_igralec(Igralec):
             self.nauci()
             self.t = time.time() - self.t
             self.final_reword_factor = min(self.final_reword_factor + 0.01,1)
-            print( 'Time used:', self.t,self.since_last_update )
+            print(datetime.now(), 'Time used:', self.t,self.since_last_update )
             self.since_last_update = 0
             self.roka2tocke = []
         else:
@@ -390,7 +392,7 @@ class Nevronski_igralec(Igralec):
                 non_z = dy.nonzero()
                 p[non_z] = dy[non_z]
                 p = p*X[-1] # krat mozne
-                hist = self.models[tip_igre].fit( X[:-1], p,epochs=5,verbose=0,callbacks=[EarlyStopping(monitor='loss', min_delta=0, patience=0, verbose=0, mode='min')] )
+                self.models[tip_igre].fit( X[:-1], p,epochs=5,verbose=0,callbacks=[EarlyStopping(monitor='loss', min_delta=0, patience=0, verbose=0, mode='min')] )
 
 
         X = np.zeros((len(self.roka2tocke),54))
@@ -400,9 +402,11 @@ class Nevronski_igralec(Igralec):
             y = self.models['Vrednotenje_roke'].predict(X)
             for i,(r,t,index_igre) in enumerate(self.roka2tocke):
                 y[i,index_igre] = t
-            hist = self.models['Vrednotenje_roke'].fit(X,y,epochs=5,verbose=0,callbacks=[EarlyStopping(monitor='loss', min_delta=0, patience=2, verbose=0, mode='min')])
+            self.models['Vrednotenje_roke'].fit(X,y,epochs=5,verbose=0,callbacks=[EarlyStopping(monitor='loss', min_delta=0, patience=2, verbose=0, mode='min')])
         self.save_models()
         self.zgodovina = {}
+        for  _ in range(20):
+            gc.collect()
 
     @staticmethod
     def generete_igra2index_and_index2igra():
