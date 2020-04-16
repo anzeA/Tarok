@@ -3,7 +3,7 @@ from keras import Input, Model
 from keras.layers import Dense, Conv1D, Multiply, Concatenate, Flatten, LSTM, TimeDistributed, CuDNNLSTM, CuDNNGRU, \
     Dropout, BatchNormalization
 from keras.models import Sequential
-from keras.optimizers import Adam
+from keras.optimizers import Adam, SGD
 from keras.utils import plot_model
 
 
@@ -24,7 +24,7 @@ def model_za_vrednotenje_roke():
         #1#solo brez
         , activation='linear' ) )
 
-    model.compile( optimizer=Adam(learning_rate=0.1),
+    model.compile( optimizer=SGD(learning_rate=0.01),
                    loss='mse',
                    metrics=['accuracy'] )
     model.summary()
@@ -76,7 +76,7 @@ def test_navadna_mreza():
     #mozne = Input( (54,), name='Mozne' )
     #output_layer = Multiply()( [output_layer, mozne] )
     model = Model( inputs=[input_layer_nasprotiki,kralj,roka_input,talon_input,index_tistega_ki_igra], outputs=output_layer,name='Navadna')
-    model.compile( optimizer=Adam(learning_rate=0.1),
+    model.compile( optimizer=SGD(learning_rate=0.01),
                    loss='mse',
                    metrics=['accuracy'] )
     model.summary()
@@ -128,7 +128,7 @@ def test_klop():
     #mozne = Input( (54,), name='Mozne' )
     #output_layer = Multiply()( [output_layer, mozne] )
     model = Model( inputs=[input_layer_nasprotiki,roka_input,talon_input], outputs=output_layer,name='Klop' )
-    model.compile( optimizer='adam',
+    model.compile( optimizer=SGD(lr=0.01),
                    loss='mse',
                    metrics=['accuracy'] )
     model.summary()

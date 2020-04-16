@@ -6,7 +6,7 @@ import warnings
 from copy import deepcopy
 from datetime import datetime
 from enum import Enum
-
+from sklearn.model_selection import KFold
 import numpy as np
 from keras.callbacks import EarlyStopping
 from keras.engine.saving import load_model
@@ -148,7 +148,7 @@ class Nevronski_igralec(Igralec):
     Tip_igre.Berac : 'Berac',
     Tip_igre.Solo_brez : 'Solo',
     Tip_igre.Odprti_berac : 'Berac',}
-    def __init__(self,load_path='models/',save_path='models/',random_card=0.8,learning_rate=0.99,final_reword_factor=0.1,ime=None):
+    def __init__(self,load_path='models/',save_path='models/',random_card=0.05,learning_rate=0.99,final_reword_factor=0.1,ime=None):
         super().__init__(ime)
         self.zgodovina = {} #cele igre
         self.roka2tocke =[]
@@ -160,6 +160,7 @@ class Nevronski_igralec(Igralec):
         self.barva_kralja = None
         self.lic  = None
         self.stanje = None
+        self.next_Q_max = None
         self.learning_rate= learning_rate
         self.igralci2index = {}
         self.save_path = save_path
@@ -167,20 +168,29 @@ class Nevronski_igralec(Igralec):
         self.final_reword_factor = final_reword_factor
 
         self.igra2index,self.index2igra = Nevronski_igralec.generete_igra2index_and_index2igra()
-        if load_path is None:
-            print('Create new models')
-            self.models = { 'Navadna_igra':train.test_navadna_mreza(),'Klop':train.test_klop(),'Vrednotenje_roke':train.model_za_vrednotenje_roke()} #,'Berac':train.test_berac(),'Solo':train.test_solo(),
-        else:
+        if load_path is not None:
             print('Load models')
             self.models={}
-            for f in os.listdir(load_path):
-                self.models[f[:-3]] = load_model(load_path+f)
+            try:
+                for f in os.listdir(load_path):
+                    self.models[f[:-3]] = load_model(load_path+f)
+            except Exception as e:
+                print('Problem ',e,'loading models create new one')
+                self.models = {'Navadna_igra': train.test_navadna_mreza(), 'Klop': train.test_klop(),
+                               'Vrednotenje_roke': train.model_za_vrednotenje_roke()}  # ,'Berac':train.test_berac(),'Solo':train.test_solo(),
+
+        else:
+            if load_path is None:
+                print( 'Create new models' )
+                self.models = {'Navadna_igra': train.test_navadna_mreza(), 'Klop': train.test_klop(),'Vrednotenje_roke': train.model_za_vrednotenje_roke()}  # ,'Berac':train.test_berac(),'Solo':train.test_solo(),
+
         self.t = 0
         self.since_last_update = 0
 
     def nova_igra(self,roka,igralci):
         self.tip_igre = None
         self.lic = None
+        self.next_Q_max = None
         self.zacetna_roka =deepcopy(roka)
         self.mozne = []
         self.igralci2index = {}
@@ -216,26 +226,17 @@ class Nevronski_igralec(Igralec):
     def igraj_karto(self,karte_na_mizi,mozne,zgodovina):
         self.stanje = self.stanje_v_vektor_rek_navadna( karte_na_mizi, mozne, zgodovina )
         # self.t += time.time()-t
-        self.p = self.models[self.tip_igre].predict( self.stanje[:-1] )[0]
-        if random.random() > self.random_card:
+        self.p = self.models[self.tip_igre].predict_on_batch( self.stanje[:-1] )[0]
+        mozne_id = [k.v_id() for k in mozne]
+        id = np.argmax( self.p[mozne_id] )
+        karta = mozne[id]
+        self.next_Q_max = self.p[karta.v_id()]
+        if random.random() < self.random_card:
             karta = random.choice( mozne )
-        elif self.tip_igre == 'Navadna_igra' or self.tip_igre == 'Klop':
-            #t = time.time()
-            mozne_id = [k.v_id() for k in mozne]
-            id = np.argmax(self.p[mozne_id])
-
-            #print(id)
-            karta = mozne[id]
-            #print('Igram',self.tip_igre,self.roka,karta)
-            #print(karte_na_mizi,"Igram",self.p[karta.v_id()],'Ostale',[(m,self.p[m.v_id()]) for m in mozne])
-            #input()
-            if karta not in self.roka:
-                karta = random.choice( mozne )
-        else:
-            raise Exception("Ni implementerano: "+str(self.tip_igre))
         self.igrana_karta = karta
         return super().igraj_karto(karta)
 
+    #TODO add extra net
     def menjaj_iz_talona(self,kupcki,st_kart):
         izbrani_kupcek = 0
         self.roka.dodaj_karte(kupcki[izbrani_kupcek])
@@ -252,21 +253,20 @@ class Nevronski_igralec(Igralec):
         v = self.igrana_karta.vrednost()
 
         dy = np.zeros(54)#self.p
+        dy[self.stanje[-1][0].nonzero()] = -70
         if self.tip_igre in  ["Klop"]:
             if sem_pobral:
                 dy[Karta.v_id( self.igrana_karta )] = -vrednost_stiha
             else:
-                # y[Karta.v_id( self.igrana_karta )] = y[Karta.v_id( self.igrana_karta )] + self.learning_rate*( - 0.9 * (v + vrednost_stiha) / vrednost_stiha)
                 dy[Karta.v_id( self.igrana_karta )] = vrednost_stiha
         else:
             if sem_pobral:
-                #y[Karta.v_id( self.igrana_karta )] = y[Karta.v_id( self.igrana_karta )] + self.learning_rate* 0.9*(v+vrednost_stiha)/v
                 dy[Karta.v_id( self.igrana_karta )] = vrednost_stiha
             else:
-                #y[Karta.v_id( self.igrana_karta )] = y[Karta.v_id( self.igrana_karta )] + self.learning_rate*( - 0.9 * (v + vrednost_stiha) / vrednost_stiha)
                 dy[Karta.v_id( self.igrana_karta )] = -vrednost_stiha#-(v + vrednost_stiha) / vrednost_stiha
-
-        self.trenutna_igra.append( (self.stanje, dy,self.igrana_karta) )
+        if len (self.trenutna_igra ) != 0:
+            self.trenutna_igra[-1] [3] = self.next_Q_max
+        self.trenutna_igra.append( [self.stanje, dy,self.igrana_karta,0] )
 
     def rezultat_igre(self,st_tock,povzetek_igre):
         #TODO nared discount factor za reword, pa končen reword
@@ -278,17 +278,19 @@ class Nevronski_igralec(Igralec):
             else:
                 index_igre = self.igra2index[(self.lic, None)]
         self.roka2tocke.append( (self.zacetna_roka,st_tock,index_igre))
-        for stanje,dy,igrana_karta in self.trenutna_igra:
-            dy[igrana_karta.v_id()] = dy[igrana_karta.v_id()]+st_tock*self.final_reword_factor
+
+        for stanje,dy,igrana_karta,next_max in self.trenutna_igra:
+            dy[igrana_karta.v_id()] = dy[igrana_karta.v_id()]+next_max*self.final_reword_factor
             (self.zgodovina.setdefault( (self.tip_igre,stanje[0].shape[1]),[] )).append((stanje,dy))
         #print('rezultat_igre end',str(self.zgodovina[:1])[:10])
+
         self.trenutna_igra = []
-        if self.since_last_update >= 500:
+        if self.since_last_update == 500:
             self.t = time.time()
-            self.nauci()
+            mean_batch_size = self.nauci()
             self.t = time.time() - self.t
-            self.final_reword_factor = min(self.final_reword_factor + 0.01,1)
-            print(datetime.now(), 'Time used:', self.t,self.since_last_update )
+            self.final_reword_factor = min(self.final_reword_factor*1.1,0.99)
+            print(datetime.now(), 'Time used:', self.t,self.since_last_update, "Mean batch_size:",mean_batch_size )
             self.since_last_update = 0
             self.roka2tocke = []
         else:
@@ -299,17 +301,6 @@ class Nevronski_igralec(Igralec):
         self.tip_igre = Nevronski_igralec.tip_igre_v_tip_izbire[tip_igre]
         self.barva_kralja = barva_kralja
         self.index_igralec_ki_igra = self.igralci2index[igralec_ki_igra]
-
-    def stanje_v_vektor(self,karte_na_mizi,mozne,zgodovina):
-        x = np.zeros( (4, 54) )
-        y = np.zeros( 54 )
-        for i , (igralec,k) in enumerate(zgodovina,1):
-            x[self.igralci2index[igralec],Karta.v_id(k)] = i
-        x [3, [Karta.v_id(k) for k in self.roka]] = 1
-        ids = [Karta.v_id(k) for k in mozne]
-        mozne_vec = np.zeros(54)
-        mozne_vec[ids] = 1
-        return x,y,mozne_vec
 
     def stanje_v_vektor_rek_navadna(self,karte_na_mizi,mozne,zgodovina):
         #[input_layer_nasprotiki, kralj, roka_input, talon_input, index_tistega_ki_igra, mozne]
@@ -368,8 +359,10 @@ class Nevronski_igralec(Igralec):
             raise Exception("Ni implementerano")
 
     def nauci(self):
+        batch_size_list = []
         for (tip_igre,time_stamp),v in self.zgodovina.items():
             #v je list k ti shran vsa stanja z isto dolzino
+            batch_size_list.append(len(v))
             (stanje,y) = v[0]
             batch_size  = len(v)
             X = []
@@ -388,25 +381,40 @@ class Nevronski_igralec(Igralec):
                 for j,x in enumerate(stanje):
                     X[j][i,:] = x
             for _ in range(3):
-                p = self.models[tip_igre].predict(X[:-1])
+                p = self.models[tip_igre].predict_on_batch(X[:-1])
                 non_z = dy.nonzero()
                 p[non_z] = dy[non_z]
                 p = p*X[-1] # krat mozne
-                self.models[tip_igre].fit( X[:-1], p,epochs=5,verbose=0,callbacks=[EarlyStopping(monitor='loss', min_delta=0, patience=0, verbose=0, mode='min')] )
+                #self.models[tip_igre].fit( X[:-1], p,epochs=5,verbose=0,callbacks=[EarlyStopping(monitor='loss', min_delta=0, patience=0, verbose=0, mode='min')] )
+                kf = KFold( n_splits=len(v)//32 +1 ,shuffle=True,)
+                for train_index, test_index in kf.split( X[0] ):
+                    #ignore train index
+                    X_batch = [x_tensor[test_index] for x_tensor in X[:-1]]
+                    y_batch = p[test_index]
+                    for __ in range(5): # memory issues
+                        #self.models[tip_igre].train_on_batch( X[:-1], p)
+                        self.models[tip_igre].train_on_batch( X_batch, y_batch)
 
 
         X = np.zeros((len(self.roka2tocke),54))
         for i,(r,t,tip) in enumerate(self.roka2tocke):
             X[i,[k.v_id() for k in r]] = 1
         for _ in range(3):
-            y = self.models['Vrednotenje_roke'].predict(X)
+            y = self.models['Vrednotenje_roke'].predict_on_batch(X)
             for i,(r,t,index_igre) in enumerate(self.roka2tocke):
                 y[i,index_igre] = t
-            self.models['Vrednotenje_roke'].fit(X,y,epochs=5,verbose=0,callbacks=[EarlyStopping(monitor='loss', min_delta=0, patience=2, verbose=0, mode='min')])
+            #self.models['Vrednotenje_roke'].fit(X,y,epochs=5,verbose=0,callbacks=[EarlyStopping(monitor='loss', min_delta=0, patience=2, verbose=0, mode='min')])
+            kf = KFold( n_splits=len( y ) // 32 + 1, shuffle=True, )
+            for train_index, test_index in kf.split( X ):
+                X_batch,y_batch = X[test_index], y[test_index]
+                for __ in range( 5 ):  # memory issues
+                    self.models['Vrednotenje_roke'].train_on_batch( X_batch,y_batch )
+
         self.save_models()
         self.zgodovina = {}
         for  _ in range(20):
             gc.collect()
+        return np.mean(batch_size_list)
 
     @staticmethod
     def generete_igra2index_and_index2igra():

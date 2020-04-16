@@ -4,7 +4,7 @@ import gc
 import pickle
 import time
 from datetime import datetime
-
+from random import shuffle
 import tensorflow as tf
 from keras.engine.saving import load_model
 
@@ -13,37 +13,27 @@ from Igralec import Bot_igralec, Nevronski_igralec
 from Tarok import Tarok
 #TODO pohendli ce so gor skis 21 in palcka da palcka pobere
 
-def main():
-    # naredi 4 igralce
-    # train.muilt_model()
-    # train.model_za_vrednotenje_roke()
+def naredi_nove_igralce(path):
+    os.mkdir(path)
+    nn = []
+    with open( os.path.join(path,'scores.pickle'), "wb" ) as output_file:
+        pickle.dump( [], output_file )
+    for i in range(1,5):
+        p = os.path.join(path,str(i))
+        os.mkdir(p)
+        nn.append(Nevronski_igralec(load_path=None,save_path=p,ime=i))
+    return nn,os.path.join(path,'scores.pickle')
 
-    #igralci = [Bot_igralec() for i in range( 3 )]
+def load_igralce(path,**kwargs):
+    return [Nevronski_igralec(load_path=os.path.join(path,str(i)),save_path=os.path.join(path,str(i)),ime=i ,**kwargs) for i in range(4)] ,os.path.join( path, 'scores.pickle' )
 
-    print('try to load scores')
-
-    with open( r"scores.pickle", "rb" ) as input_file:
+def main(igralci,scores_file):
+    with open( scores_file, "rb" ) as input_file:
         scores = pickle.load( input_file )
-        #print('scores loaded')
-        #scores2 =[ {str(k.ime): int(v) for k,v in s.items()} for s in scores]
-    #model = load_model('model_conv.h5')
-    igralci = []#[Bot_igralec() for i in range( 3 )]
-    igralci.append(Nevronski_igralec(load_path='models2/',save_path='models2/',ime='Igralec_1'))
-    igralci.append(Nevronski_igralec(load_path='models3/',save_path='models3/',ime='Igralec_2'))
-    igralci.append(Nevronski_igralec(load_path='models4/',save_path='models4/',ime='Igralec_3'))
-    igralci.append(Nevronski_igralec(load_path='models/',save_path='models/',ime='Igralec_4'))
-    #igralci.append(Nevronski_igralec(None))
 
-    #igralci.append( nn )
-    #igralci.append( Bot_igralec() )
-    # igralci.append(Clovekski_igralec())
-    """
-    igra = Igra(igralci)
-    igra.start()
-
-    """
-    num_games= 1000
+    num_games= 500
     for i in range( 1000 ):
+        shuffle(igralci)
         t = time.time()
         tarok = Tarok( igralci, num_games)
         tarok.start()
@@ -54,9 +44,9 @@ def main():
         print(datetime.now(),':Vsi scori:')
         for r in scores:
             print(r)
-
-        with open( r"scores.pickle", "wb" ) as output_file:
-            pickle.dump(scores,output_file)
+        if scores_file is not None:
+            with open( scores_file, "wb" ) as output_file:
+                pickle.dump(scores,output_file)
 
 if __name__ == '__main__':
     gpus = tf.config.experimental.list_physical_devices( 'GPU' )
@@ -69,7 +59,9 @@ if __name__ == '__main__':
     #train.model_za_vrednotenje_roke()
     #train.test_klop()
 
-    main()
+    #main('scores_2.pickle',models_files=['modeli_lr_0.01/model'+str(i)+'/' for i in range(1,5)])
+    #main(*naredi_nove_igralce('test_max'))
+    main(*load_igralce('test_max'))
     #print( tf.__version__ )
     #train.test_navadna_mreza()
     #train.model_igraj()
