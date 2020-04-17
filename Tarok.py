@@ -17,7 +17,6 @@ class Tarok:
             for i in  cycle([0,1,2,3]):
                 yield i
         else:
-            print(self.st_iger)
             for i in range(self.st_iger):
                 yield i
 

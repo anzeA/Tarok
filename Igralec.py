@@ -173,7 +173,7 @@ class Nevronski_igralec(Igralec):
             self.models={}
             try:
                 for f in os.listdir(load_path):
-                    self.models[f[:-3]] = load_model(load_path+f)
+                    self.models[f[:-3]] = load_model(os.path.join(load_path,f ))
             except Exception as e:
                 print('Problem ',e,'loading models create new one')
                 self.models = {'Navadna_igra': train.test_navadna_mreza(), 'Klop': train.test_klop(),
@@ -285,16 +285,7 @@ class Nevronski_igralec(Igralec):
         #print('rezultat_igre end',str(self.zgodovina[:1])[:10])
 
         self.trenutna_igra = []
-        if self.since_last_update == 500:
-            self.t = time.time()
-            mean_batch_size = self.nauci()
-            self.t = time.time() - self.t
-            self.final_reword_factor = min(self.final_reword_factor*1.1,0.99)
-            print(datetime.now(), 'Time used:', self.t,self.since_last_update, "Mean batch_size:",mean_batch_size )
-            self.since_last_update = 0
-            self.roka2tocke = []
-        else:
-            self.since_last_update = self.since_last_update+ 1
+        self.since_last_update = self.since_last_update +1
 
 
     def konec_licitiranja(self,igralec_ki_igra,tip_igre,barva_kralja=None):
@@ -359,6 +350,7 @@ class Nevronski_igralec(Igralec):
             raise Exception("Ni implementerano")
 
     def nauci(self):
+        time_train = time.time()
         batch_size_list = []
         for (tip_igre,time_stamp),v in self.zgodovina.items():
             #v je list k ti shran vsa stanja z isto dolzino
@@ -386,7 +378,7 @@ class Nevronski_igralec(Igralec):
                 p[non_z] = dy[non_z]
                 p = p*X[-1] # krat mozne
                 #self.models[tip_igre].fit( X[:-1], p,epochs=5,verbose=0,callbacks=[EarlyStopping(monitor='loss', min_delta=0, patience=0, verbose=0, mode='min')] )
-                kf = KFold( n_splits=len(v)//32 +1 ,shuffle=True,)
+                kf = KFold(n_splits=max(len(v)//32,2) ,shuffle=True,)
                 for train_index, test_index in kf.split( X[0] ):
                     #ignore train index
                     X_batch = [x_tensor[test_index] for x_tensor in X[:-1]]
@@ -412,9 +404,15 @@ class Nevronski_igralec(Igralec):
 
         self.save_models()
         self.zgodovina = {}
-        for  _ in range(20):
+        self.roka2tocke = []
+        time_train = time.time() - time_train
+        self.final_reword_factor = min(self.final_reword_factor*1.1,0.99)
+        print(datetime.now(), 'Time used:', time_train,self.since_last_update, "Mean batch_size:",np.mean(batch_size_list) )
+        self.since_last_update = 0
+
+        for _ in range(20):
             gc.collect()
-        return np.mean(batch_size_list)
+
 
     @staticmethod
     def generete_igra2index_and_index2igra():
@@ -439,4 +437,4 @@ class Nevronski_igralec(Igralec):
 
     def save_models(self):
         for k,v in self.models.items():
-            v.save(self.save_path+k+".h5")
+            v.save(os.path.join(self.save_path,k+".h5"))
