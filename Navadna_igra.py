@@ -100,7 +100,11 @@ class Navadna_igra():
         spodnja = None
         for i in range(4):
             igralec = self.igralci[ (start_index+i)%4]
-            karta = igralec.igraj_karto(stih,self.mozne_karte( spodnja,igralec.roka),self.zgodovina)
+            mozne = self.mozne_karte( spodnja,igralec.roka)
+            mozne_copy = deepcopy(mozne)
+            karta = igralec.igraj_karto(stih,mozne,self.zgodovina)
+            if karta not in mozne_copy:
+                raise Exception(str(igralec)+str(igralec.__class__)+' Karte ne mores igarti. Karta: '+str(karta)+' karte na mizi:'+str(stih)+' Roka'+str(igralec.roka)+'Mozne'+str(mozne) + 'deep mozne:'+str(mozne_copy))
             self.zgodovina.append((igralec,karta))
             if spodnja is None:
                 spodnja = karta

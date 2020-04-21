@@ -1,19 +1,45 @@
 import os
-
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2' #INFO and WARNING messages are not printed
+print('Tensorflow INFO and WARNING messages are not printed')
 import gc
 import pickle
 import time
 from datetime import datetime
 from random import shuffle
 import tensorflow as tf
-from keras.engine.saving import load_model
-
 import train
 from Igralec import Bot_igralec, Nevronski_igralec
 from Tarok import Tarok
+import numpy as np
+import shutil
+from matplotlib import pyplot as plt
+def plot_score(path):
+    with open( os.path.join( path, 'scores.pickle' ), "rb" ) as input_file:
+        scores = pickle.load( input_file )
+    keys = list(scores[0].keys())
+    for k in keys:
+        plt.plot([d[k] for d in scores])
+    plt.show()
 #TODO pohendli ce so gor skis 21 in palcka da palcka pobere
+def naredi_nove_igralce_debug(path,**kwargs):
+    os.mkdir(path)
+    nn = []
+    with open( os.path.join(path,'scores.pickle'), "wb" ) as output_file:
+        pickle.dump( [], output_file )
 
-def naredi_nove_igralce(path):
+    with open( os.path.join(path,'kwargs.pickle'), "wb" ) as output_file:
+        pickle.dump( dict(), output_file )
+    p = os.path.join(path,str(1))
+    os.mkdir(p)
+    nn.append(Nevronski_igralec(load_path=None,save_path=p,**kwargs))
+    nn.append(Bot_igralec())
+    nn.append(Bot_igralec())
+    nn.append(Bot_igralec())
+    return nn,os.path.join(path,'scores.pickle'),os.path.join(path,'kwargs.pickle')
+
+
+
+def naredi_nove_igralce(path,**kwargs):
     os.mkdir(path)
     nn = []
     with open( os.path.join(path,'scores.pickle'), "wb" ) as output_file:
@@ -24,7 +50,7 @@ def naredi_nove_igralce(path):
     for i in range(1,5):
         p = os.path.join(path,str(i))
         os.mkdir(p)
-        nn.append(Nevronski_igralec(load_path=None,save_path=p,ime=i))
+        nn.append(Nevronski_igralec(load_path=None,save_path=p,ime=i,**kwargs))
     return nn,os.path.join(path,'scores.pickle'),os.path.join(path,'kwargs.pickle')
 
 def load_igralce(path):
@@ -35,15 +61,20 @@ def load_igralce(path):
     os.path.join( path, 'scores.pickle' )
     return [Nevronski_igralec(load_path=os.path.join(path,str(i)),save_path=os.path.join(path,str(i)),ime=i ,**kwargs) for i in range(1,5)] ,os.path.join( path, 'scores.pickle' ),os.path.join(path,'kwargs.pickle')
 
-def main(dir):
+def main(dir,**kwargs):
     if dir in os.listdir():
         igralci,scores_file,kwargs_file = load_igralce(dir)
     else:
-        igralci,scores_file,kwargs_file = naredi_nove_igralce(dir)
+        debug = kwargs.setdefault('debug',False)
+        del kwargs['debug']
+        if debug:
+            igralci,scores_file,kwargs_file = naredi_nove_igralce_debug(dir,**kwargs)
+        else:
+            igralci,scores_file,kwargs_file = naredi_nove_igralce(dir,**kwargs)
     with open( scores_file, "rb" ) as input_file:
         scores = pickle.load( input_file )
 
-    num_games= 500
+    num_games= 200
     for i in range( 1000 ):
         shuffle(igralci)
         t = time.time()
@@ -52,6 +83,15 @@ def main(dir):
         for igr in igralci:
             if isinstance(igr,Nevronski_igralec):
                 igr.nauci()
+        for igr in igralci:
+            if isinstance(igr,Nevronski_igralec):
+                igr.del_models()
+        tf.keras.backend.clear_session()
+        for _ in range(50):
+            gc.collect()
+        for igr in igralci:
+            if isinstance(igr,Nevronski_igralec):
+                igr.load_models()
         t = time.time()-t
         print('Time need for',num_games,'games:',t)
         scores.append({str(k):v for k,v in tarok.rezultati.items()})
@@ -61,18 +101,15 @@ def main(dir):
                 pickle.dump(scores,output_file)
         if kwargs_file is not None:
             with open( kwargs_file, "wb" ) as output_file:
-                pickle.dump( { 'final_reword_factor' : igralci[0].final_reword_factor },output_file)
+                pickle.dump( { 'final_reword_factor' : [igr for igr in igralci if isinstance(igr,Nevronski_igralec)][0].final_reword_factor, },output_file)
 
         print(datetime.now(),':Vsi scori:')
         for r in scores:
-            print(r)
+            keys = list(r.keys())
+            keys.sort()
+            print([str(k)+': '+str(r[k]) for k in keys])
 
 if __name__ == '__main__':
-    gpus = tf.config.experimental.list_physical_devices( 'GPU' )
-    if gpus:
-        # Restrict TensorFlow to only use the first GPU
-        for gpu in gpus:
-            tf.config.experimental.set_memory_growth( gpu, True )
 
     #os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
     #train.model_za_vrednotenje_roke()
@@ -80,7 +117,17 @@ if __name__ == '__main__':
 
     #main('scores_2.pickle',models_files=['modeli_lr_0.01/model'+str(i)+'/' for i in range(1,5)])
     #main(*naredi_nove_igralce('test_max'))
-    main('test_max')
+    print('Support Cuda:',tf.test.is_built_with_cuda())
+    print('Tf version:',tf.__version__)
+    #tf.keras.applications.ResNet101
+    #input('Zelis nadaljevati')
+    try:
+        shutil.rmtree('test_nan')
+    except Exception as e:
+        print(e)
+    #main('test_lr1e-3',learning_rate=1e-3,debug=False)
+    plot_score('test_lr1e-3')
+
     #print( tf.__version__ )
     #train.test_navadna_mreza()
     #train.model_igraj()
