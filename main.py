@@ -8,17 +8,22 @@ from datetime import datetime
 from random import shuffle
 import tensorflow as tf
 import train
-from Igralec import Bot_igralec, Nevronski_igralec
+from Igralec import Bot_igralec, Nevronski_igralec, Double_Nevronski_Igralec
 from Tarok import Tarok
 import numpy as np
 import shutil
 from matplotlib import pyplot as plt
 def plot_score(path):
+    plt.clf()
+    plt.close()
     with open( os.path.join( path, 'scores.pickle' ), "rb" ) as input_file:
         scores = pickle.load( input_file )
     keys = list(scores[0].keys())
     for k in keys:
         plt.plot([d[k] for d in scores])
+    plt.xlabel('Igra')
+    plt.ylabel('Stevilo tock')
+    plt.title('Igra za bazo:'+str(path))
     plt.show()
 #TODO pohendli ce so gor skis 21 in palcka da palcka pobere
 def naredi_nove_igralce_debug(path,**kwargs):
@@ -31,7 +36,7 @@ def naredi_nove_igralce_debug(path,**kwargs):
         pickle.dump( dict(), output_file )
     p = os.path.join(path,str(1))
     os.mkdir(p)
-    nn.append(Nevronski_igralec(load_path=None,save_path=p,**kwargs))
+    nn.append(Double_Nevronski_Igralec(load_path=None,save_path=p,**kwargs))
     nn.append(Bot_igralec())
     nn.append(Bot_igralec())
     nn.append(Bot_igralec())
@@ -50,7 +55,7 @@ def naredi_nove_igralce(path,**kwargs):
     for i in range(1,5):
         p = os.path.join(path,str(i))
         os.mkdir(p)
-        nn.append(Nevronski_igralec(load_path=None,save_path=p,ime=i,**kwargs))
+        nn.append(Double_Nevronski_Igralec(load_path=None,save_path=p,ime=i,**kwargs))
     return nn,os.path.join(path,'scores.pickle'),os.path.join(path,'kwargs.pickle')
 
 def load_igralce(path):
@@ -59,7 +64,8 @@ def load_igralce(path):
     with open( os.path.join( path, 'kwargs.pickle' ), "rb" ) as input_file:
         kwargs = pickle.load( input_file )
     os.path.join( path, 'scores.pickle' )
-    return [Nevronski_igralec(load_path=os.path.join(path,str(i)),save_path=os.path.join(path,str(i)),ime=i ,**kwargs) for i in range(1,5)] ,os.path.join( path, 'scores.pickle' ),os.path.join(path,'kwargs.pickle')
+    #return [Nevronski_igralec(load_path=os.path.join(path,str(i)),save_path=os.path.join(path,str(i)),ime=i ,**kwargs) for i in range(1,5)] ,os.path.join( path, 'scores.pickle' ),os.path.join(path,'kwargs.pickle')
+    return [Double_Nevronski_Igralec(load_path=os.path.join(path,str(i)),save_path=os.path.join(path,str(i)),ime=i ,**kwargs) for i in range(1,5)] ,os.path.join( path, 'scores.pickle' ),os.path.join(path,'kwargs.pickle')
 
 def main(dir,**kwargs):
     if dir in os.listdir():
@@ -100,15 +106,16 @@ def main(dir,**kwargs):
             with open( scores_file, "wb" ) as output_file:
                 pickle.dump(scores,output_file)
         if kwargs_file is not None:
+            igr_param = [igr for igr in igralci if isinstance( igr, Nevronski_igralec )][0]
             with open( kwargs_file, "wb" ) as output_file:
-                pickle.dump( { 'final_reword_factor' : [igr for igr in igralci if isinstance(igr,Nevronski_igralec)][0].final_reword_factor, },output_file)
+                pickle.dump( { 'final_reword_factor' : igr_param.final_reword_factor, 'random_card':igr_param.random_card},output_file)
 
         print(datetime.now(),':Vsi scori:')
-        for r in scores:
+        for r in scores[-10:]:
             keys = list(r.keys())
             keys.sort()
             print([str(k)+': '+str(r[k]) for k in keys])
-
+        plot_score(dir)
 if __name__ == '__main__':
 
     #os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
@@ -125,8 +132,11 @@ if __name__ == '__main__':
         shutil.rmtree('test_nan')
     except Exception as e:
         print(e)
-    #main('test_lr1e-3',learning_rate=1e-3,debug=False)
-    plot_score('test_lr1e-3')
+    main('true_double_Adadelta0.01',learning_rate=0.01,debug=False)
+    plot_score('test_doublw')
+    #plot_score('test_doublwlr1e-2')
+    #plot_score('test_lr1e-3')
+    #plot_score('test_doublw')
 
     #print( tf.__version__ )
     #train.test_navadna_mreza()

@@ -151,7 +151,7 @@ class Nevronski_igralec(Igralec):
     Tip_igre.Berac : 'Berac',
     Tip_igre.Solo_brez : 'Solo',
     Tip_igre.Odprti_berac : 'Berac',}
-    def __init__(self,load_path='models/',save_path='models/',random_card=0.05,learning_rate=0.1,final_reword_factor=0.1,ime=None):
+    def __init__(self,load_path='models/',save_path='models/',random_card=0.9,learning_rate=0.1,final_reword_factor=0.1,ime=None,ignor_models=False):
         super().__init__(ime)
         self.zgodovina = {} #cele igre
         self.roka2tocke =[]
@@ -173,30 +173,31 @@ class Nevronski_igralec(Igralec):
         self.final_reword_factor = final_reword_factor
         self.load_path = load_path
         self.igra2index,self.index2igra,self.igra_zalozi2index = Nevronski_igralec.generete_igra2index_and_index2igra()
-        if load_path is not None:
-            print('Load models')
-            self.models={}
-            try:
-                self.load_models()
-            except Exception as e:
-                print('Problem ',e,'loading models create new one')
-                self.models = {'Navadna_igra': train.test_navadna_mreza(self.learning_rate), 'Klop': train.test_klop(self.learning_rate),
-                               'Vrednotenje_roke': train.model_za_vrednotenje_roke(self.learning_rate),'Zalaganje':train.model_za_zalaganje(self.learning_rate)}  # ,'Berac':train.test_berac(),'Solo':train.test_solo(),
-
-        else:
-            if load_path is None:
-                self.load_path = self.save_path
-                print( 'Create new models' )
-                self.models = {'Navadna_igra': train.test_navadna_mreza(self.learning_rate), 'Klop': train.test_klop(self.learning_rate),'Vrednotenje_roke': train.model_za_vrednotenje_roke(self.learning_rate),'Zalaganje':train.model_za_zalaganje(self.learning_rate)}  # ,'Berac':train.test_berac(),'Solo':train.test_solo(),
-
         self.t = 0
         self.since_last_update = 0
+        if ignor_models == False:
+            if load_path is not None:
+                print('Load models')
+                self.models={}
+                try:
+                    self.load_models()
+                except Exception as e:
+                    print('Problem ',e,'loading models create new one')
+                    self.models = self.create_models()
+            else:
+                self.load_path = self.save_path
+                print( 'Create new models' )
+                self.models = self.create_models()
+
+    def create_models(self):
+        return {'Navadna_igra': train.test_navadna_mreza(self.learning_rate), 'Klop': train.test_klop(self.learning_rate),
+                                   'Vrednotenje_roke': train.model_za_vrednotenje_roke(self.learning_rate),'Zalaganje':train.model_za_zalaganje(self.learning_rate)}  # ,'Berac':train.test_berac(),'Solo':train.test_solo(),
 
     def load_models(self):
         self.models = dict()
         for f in os.listdir( self.load_path ):
-            self.models[f[:-3]] = tf.keras.models.load_model( os.path.join( self.load_path, f ) ,compile=False)
-            self.models[f[:-3]].compile(optimizer=tf.keras.optimizers.SGD(lr=self.learning_rate),
+            self.models[f[:-5]] = tf.keras.models.load_model( os.path.join( self.load_path, f ) ,compile=False)
+            self.models[f[:-5]].compile(optimizer=tf.keras.optimizers.SGD(lr=self.learning_rate),
                    loss='mse',
                    metrics=['accuracy'])
 
@@ -244,13 +245,12 @@ class Nevronski_igralec(Igralec):
     def igraj_karto(self,karte_na_mizi,mozne,zgodovina):
         self.stanje = self.stanje_v_vektor_rek_navadna( karte_na_mizi, mozne, zgodovina )
         # self.t += time.time()-t
-        self.p = self.models[self.tip_igre].predict_on_batch( self.stanje[:-1] )[0]
+        p = self.models[self.tip_igre].predict_on_batch( self.stanje[:-1] )[0]
         mozne_id = [k.v_id() for k in mozne]
-        assert mozne == [Karta.iz_id(i) for i in mozne_id ]
-        id = np.argmax( self.p[mozne_id] )
+        id = np.argmax( p[mozne_id] )
 
         karta = mozne[id]
-        self.next_Q_max = self.p[karta.v_id()]
+        self.next_Q_max = p[karta.v_id()]
         if random.random() < self.random_card:
             karta = random.choice( mozne )
         self.igrana_karta = karta
@@ -385,7 +385,7 @@ class Nevronski_igralec(Igralec):
             talon[0,[karta.v_id() for karta in k],i] = 1
         return [roka,talon,igra]
 
-    def nauci(self):
+    def nauci(self,save=True):
         time_train = time.time()
         loss_vals = []
         data_sizes = []
@@ -470,13 +470,14 @@ class Nevronski_igralec(Igralec):
         assert math.isfinite( hist.history['loss'][-1] )
         loss_vals.append( hist.history['loss'][-1] )
         del hist
-
-        self.save_models()
+        if save:
+            self.save_models()
         self.zgodovina = {}
         self.roka2tocke = []
         self.zalaganje2tocke = []
         time_train = time.time() - time_train
         self.final_reword_factor = min(self.final_reword_factor*1.1,0.99)
+        self.random_card = max(0.05,self.random_card*0.9)
         print(datetime.now(), str(self),'Time used:', time_train,self.since_last_update, 'Mean_loss:',np.mean(loss_vals),'Mean number of data per fit:',np.mean(data_sizes) )
         self.since_last_update = 0
         del loss_vals
@@ -516,3 +517,86 @@ class Nevronski_igralec(Igralec):
     def save_models(self):
         for k,v in self.models.items():
             v.save(os.path.join(self.save_path,k+".h5"),include_optimizer=False)
+
+
+class Double_Nevronski_Igralec(Nevronski_igralec):
+
+    def __init__(self,load_path=None,save_path=None,random_card=0.05,learning_rate=0.1,final_reword_factor=0.1,ime=None):
+        super().__init__(load_path,save_path,random_card,learning_rate,final_reword_factor,ime,True)
+        if load_path is not None:
+            print( 'Load models' )
+            try:
+                self.load_models()
+            except Exception as e:
+                print( 'Problem ', e, 'loading models create new one' )
+                self.models ,self.models_B = self.create_models()
+        else:
+            self.load_path = self.save_path
+            print( 'Create new models' )
+            self.models ,self.models_B = self.create_models()
+
+    def create_models(self):
+        return  super().create_models(),{'Navadna_igra': train.test_navadna_mreza(self.learning_rate), 'Klop': train.test_klop(self.learning_rate)}  # ,'Berac':train.test_berac(),'Solo':train.test_solo(),
+
+    def del_models(self):
+        del self.models
+        del self.models_B
+        self.models = None
+        self.models_B = None
+
+    def save_models(self):
+        for k,v in self.models.items():
+            if k in ['Vrednotenje_roke', 'Zalaganje']:
+                v.save( os.path.join( self.save_path, k + ".h5" ), include_optimizer=False )
+            else:
+                v.save(os.path.join(self.save_path,k+"_A.h5"),include_optimizer=False)
+        for k,v in self.models_B.items():
+            v.save(os.path.join(self.save_path,k+"_B.h5"),include_optimizer=False)
+
+    def load_models(self):
+        self.models = dict()
+        self.models_B = dict()
+        for f in os.listdir( self.load_path ):
+            if f[-5:-3] == '_A':
+                self.models[f[:-5]] = tf.keras.models.load_model( os.path.join( self.load_path, f ), compile=False )
+                self.models[f[:-5]].compile( optimizer=tf.keras.optimizers.Adadelta(lr=self.learning_rate),
+                                             loss='mse',
+                                             metrics=['accuracy'] )
+            elif f[-5:-3] == '_B':
+                self.models_B[f[:-5]] = tf.keras.models.load_model( os.path.join( self.load_path, f ), compile=False )
+                self.models_B[f[:-5]].compile( optimizer=tf.keras.optimizers.Adadelta( lr=self.learning_rate ),
+                                               loss='mse',
+                                               metrics=['accuracy'] )
+            elif f[:-3]  in ['Vrednotenje_roke','Zalaganje']:
+                self.models[f[:-3]] = tf.keras.models.load_model( os.path.join( self.load_path, f ), compile=False )
+                self.models[f[:-3]].compile( optimizer=tf.keras.optimizers.SGD( lr=self.learning_rate ),
+                                               loss='mse',
+                                               metrics=['accuracy'] )
+            else:
+                raise IOError( "Napaka pri loadanju modelov. "+str(f) )
+
+    def nauci(self,save=True):
+        super().nauci(False)
+        self.models, self.models_B = self.models_B, self.models  # sweap two models duo to duble q-learnig
+        self.models['Vrednotenje_roke'] = self.models_B['Vrednotenje_roke']
+        self.models['Zalaganje'] = self.models_B['Zalaganje']
+        del self.models_B['Vrednotenje_roke']
+        del self.models_B['Zalaganje']
+        if save:
+            self.save_models()
+
+    def igraj_karto(self,karte_na_mizi,mozne,zgodovina):
+        self.stanje = self.stanje_v_vektor_rek_navadna( karte_na_mizi, mozne, zgodovina )
+        # self.t += time.time()-t
+        p = self.models[self.tip_igre].predict_on_batch( self.stanje[:-1] )[0]
+        p_b = self.models_B[self.tip_igre].predict_on_batch( self.stanje[:-1] )[0]
+        mozne_id = [k.v_id() for k in mozne]
+        id = np.argmax( p[mozne_id] )
+
+        karta = mozne[id]
+        self.next_Q_max = p_b[karta.v_id()]
+        if random.random() < self.random_card:
+            karta = random.choice( mozne )
+        self.igrana_karta = karta
+        return Igralec.igraj_karto(self,karta)
+

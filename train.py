@@ -19,7 +19,7 @@ def model_za_vrednotenje_roke(lr,l2_rate=0.001):
         #1#solo brez
         , activation='linear' ) )
 
-    model.compile( optimizer=tf.keras.optimizers.SGD(lr=lr,momentum=0.2),
+    model.compile( optimizer=tf.keras.optimizers.Adadelta(lr=lr),
                    loss=tf.keras.losses.Huber(delta=15.0,),
                    metrics=['accuracy'] )
     model.summary()
@@ -42,7 +42,7 @@ def model_za_zalaganje(lr,l2_rate=0.001):
     model = tf.keras.Model( inputs=[roka_input, talon_input, igra_input],
                             outputs=output_layer, name='Zalaganje' )
 
-    model.compile( optimizer=tf.keras.optimizers.SGD(lr=lr,momentum=0.2),
+    model.compile( optimizer=tf.keras.optimizers.Adadelta(lr=lr),
                    loss=tf.keras.losses.Huber(delta=15.0,),
                    metrics=['accuracy'] )
     model.summary()
@@ -100,7 +100,7 @@ def test_navadna_mreza(lr,l2_rate=0.001):
     #mozne = Input( (54,), name='Mozne' )
     #output_layer = Multiply()( [output_layer, mozne] )
     model = tf.keras.Model( inputs=[input_layer_nasprotiki,kralj,roka_input,talon_input,index_tistega_ki_igra], outputs=output_layer,name='Navadna')
-    model.compile( optimizer=tf.keras.optimizers.SGD(lr=lr,momentum=0.2),
+    model.compile( optimizer=tf.keras.optimizers.Adadelta(lr=lr),
                    loss=tf.keras.losses.Huber(delta=15.0),
                    metrics=['accuracy'] )
     model.summary()
@@ -158,7 +158,7 @@ def test_klop(lr,l2_rate=0.0001):
     #mozne = Input( (54,), name='Mozne' )
     #output_layer = Multiply()( [output_layer, mozne] )
     model = tf.keras.Model( inputs=[input_layer_nasprotiki,roka_input,talon_input], outputs=output_layer,name='Klop' )
-    model.compile( optimizer=tf.keras.optimizers.SGD(lr=lr,momentum=0.2),
+    model.compile( optimizer=tf.keras.optimizers.Adadelta(lr=lr),
                    loss=tf.keras.losses.Huber(delta=15.0),
                    metrics=['accuracy'] )
     model.summary()
