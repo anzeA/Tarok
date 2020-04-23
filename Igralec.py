@@ -334,7 +334,7 @@ class Nevronski_igralec(Igralec):
             st_tock = -20
         elif self.tip_igre == 'Berac' and self.index_igralec_ki_igra != 3 and len( self.roka ) != 0:
             st_tock = 20
-        self.tip_igre[-1][3] = st_tock # final reword
+        self.trenutna_igra[-1][3] = st_tock # final reword
 
         for stanje,dy,igrana_karta,next_max in self.trenutna_igra:
             dy[igrana_karta.v_id()] = dy[igrana_karta.v_id()]+next_max*self.final_reword_factor

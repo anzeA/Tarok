@@ -212,6 +212,7 @@ def test_solo(lr,l2_rate=0.0001):
     model.compile( optimizer=tf.keras.optimizers.Adadelta(learning_rate=lr),
                    loss=tf.keras.losses.Huber(delta=15.0),
                    metrics=['accuracy'] )
+    model.summary()
     return model
 
 def test_berac(lr,l2_rate=0.0001):
@@ -254,4 +255,5 @@ def test_berac(lr,l2_rate=0.0001):
     #time = 12
     #X = [np.random.random((batch,time,4,54)), np.random.random((batch,time,54)), np.random.random((batch,1)), np.random.random((batch,54))]
     #model.fit(X,np.random.random((batch,54)),batch_size=8,epochs=2)
+    model.summary()
     return model
