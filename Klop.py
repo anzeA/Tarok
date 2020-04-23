@@ -38,7 +38,7 @@ class Klop():
             k.rezultat_igre(v,self.zgodovina)
         return pisejo
 
-    def krog(self,start_index):
+    def krog(self,start_index,add_talon=True):
         stih = []
         spodnja = None
         for i in range(4):
@@ -56,7 +56,7 @@ class Klop():
             if spodnja is None:
                 spodnja = karta
             stih.append(karta)
-        if len(self.talon) > 0:
+        if add_talon and len(self.talon) > 0:
             #TODO izpis
             talon_karta = self.talon.pop()
             stih.append(talon_karta)

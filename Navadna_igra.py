@@ -50,10 +50,18 @@ class Navadna_igra():
                 st_kart_za_menjat = 3
             elif self.igra == Tip_igre.Solo_dve or self.igra == Tip_igre.Dve:
                 st_kart_za_menjat = 2
-            else:  # ena ,soloaena al pa solo_brez
+            elif self.igra == Tip_igre.Solo_ena or self.igra == Tip_igre.Ena:
                 st_kart_za_menjat = 1
-            stevilka_kupcka = self.igralec.menjaj_iz_talona(kupcki_talona,st_kart_za_menjat)
-            del kupcki_talona[stevilka_kupcka]
+            elif self.igra == Tip_igre.Solo_brez:  # ena ,soloaena al pa solo_brez
+                st_kart_za_menjat = 0
+            else:
+                raise Exception('Ni implentirano '+str(self.igra))
+            if self.igra != Tip_igre.Solo_brez:
+                stevilka_kupcka = self.igralec.menjaj_iz_talona(deepcopy(kupcki_talona),st_kart_za_menjat)
+                self.zgodovina.append( ("Talon",(stevilka_kupcka,deepcopy(kupcki_talona))) )
+                for i in self.igralci:
+                    i.izbral_iz_talona(deepcopy(kupcki_talona),stevilka_kupcka)
+                del kupcki_talona[stevilka_kupcka]
 
         zacne = 0
         for i in range(12):
@@ -67,7 +75,7 @@ class Navadna_igra():
             skupek_kupckov.extend(i.kupcek)
         for i in self.ekipa2:
             skupek_kupckov2.extend(i.kupcek)
-        if len(self.ekipa) == 1 and self.barva_kralja != None and Karta(self.barva_kralja,8) in self.igralec.kupcek:
+        if self.igra != Tip_igre.Solo_brez and len(self.ekipa) == 1 and self.barva_kralja != None and Karta(self.barva_kralja,8) in self.igralec.kupcek:
             dodaj_talon = skupek_kupckov
         else:
             dodaj_talon = skupek_kupckov2
