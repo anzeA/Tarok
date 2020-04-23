@@ -290,19 +290,32 @@ class Nevronski_igralec(Igralec):
 
         dy = np.zeros(54)#self.p
         dy[self.stanje[-1][0]== 0] = -70
-        if self.tip_igre in  ["Klop"]:
+        if self.tip_igre ==  "Klop":
             if sem_pobral:
-                dy[Karta.v_id( self.igrana_karta )] = -vrednost_stiha*vrednost_stiha
+                dy[Karta.v_id( self.igrana_karta )] = -vrednost_stiha
             else:
-                dy[Karta.v_id( self.igrana_karta )] = vrednost_stiha*vrednost_stiha
+                dy[Karta.v_id( self.igrana_karta )] = vrednost_stiha
+        elif self.tip_igre == 'Berac':
+            if self.index_igralec_ki_igra ==3: # jaz igram
+                if sem_pobral:
+                    dy[Karta.v_id( self.igrana_karta )] = -1
+                else:
+                    dy[Karta.v_id( self.igrana_karta )] = 1
+            else:
+                if sem_pobral:
+                    dy[Karta.v_id( self.igrana_karta )] = -1
+                else:
+                    dy[Karta.v_id( self.igrana_karta )] = 1
+                # ce nasprotnik zmaga
+
         else:
             if sem_pobral:
-                dy[Karta.v_id( self.igrana_karta )] = vrednost_stiha*vrednost_stiha
+                dy[Karta.v_id( self.igrana_karta )] = vrednost_stiha
             else:
-                dy[Karta.v_id( self.igrana_karta )] = -vrednost_stiha*vrednost_stiha#-(v + vrednost_stiha) / vrednost_stiha
+                dy[Karta.v_id( self.igrana_karta )] = -vrednost_stiha#-(v + vrednost_stiha) / vrednost_stiha
         if len (self.trenutna_igra ) != 0:
             self.trenutna_igra[-1] [3] = self.next_Q_max
-        self.trenutna_igra.append( [self.stanje, dy,self.igrana_karta,0] )
+        self.trenutna_igra.append( [self.stanje, dy,self.igrana_karta,None] )
 
     def rezultat_igre(self,st_tock,povzetek_igre):
         if self.lic in [Tip_igre.Ena,Tip_igre.Dve,Tip_igre.Tri]:
@@ -315,6 +328,14 @@ class Nevronski_igralec(Igralec):
         self.roka2tocke.append( (self.zacetna_roka,st_tock,index_igre))
         if self.zalozil is not None:
             self.zalaganje2tocke[-1][-2] = st_tock
+
+        #final reword za beraca ker sicer je v vsaem rimeru 0 more zajebat tistega ki igra
+        if self.tip_igre == 'Berac' and self.index_igralec_ki_igra != 3 and len(self.roka) == 0:
+            st_tock = -20
+        elif self.tip_igre == 'Berac' and self.index_igralec_ki_igra != 3 and len( self.roka ) != 0:
+            st_tock = 20
+        self.tip_igre[-1][3] = st_tock # final reword
+
         for stanje,dy,igrana_karta,next_max in self.trenutna_igra:
             dy[igrana_karta.v_id()] = dy[igrana_karta.v_id()]+next_max*self.final_reword_factor
             (self.zgodovina.setdefault( (self.tip_igre,stanje[0].shape[1]),[] )).append((stanje,dy))
