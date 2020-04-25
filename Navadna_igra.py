@@ -12,17 +12,17 @@ solo = None, navadna igra
     'solo_brez' je solo brez talona 
 '''
 class Navadna_igra():
-    def __init__(self,igralci,igra,barva_kralja,igralec,talon):
+    def __init__(self,igralci,igra,barva_kralja,igralec,talon,id_igre):
         self.igralci = igralci
         self.igra = igra
         self.igralec = igralec
-
+        self.id_igre = id_igre
         if igra in [Tip_igre.Ena,Tip_igre.Dve,Tip_igre.Tri]:
             assert barva_kralja != Barva.TAROK
             self.barva_kralja = barva_kralja
             self.solo = False
-            self.ekipa = [i for i in self.igralci if (Karta( self.barva_kralja, 8 ) in i) or i == igralec]
-            self.ekipa2 = [i for i in self.igralci if not (Karta( self.barva_kralja, 8 ) in i.roka or i == igralec)]
+            self.ekipa = [i for i in self.igralci if (Karta( self.barva_kralja, 8 ) in i.roka[self.id_igre]) or i == igralec]
+            self.ekipa2 = [i for i in self.igralci if not (Karta( self.barva_kralja, 8 ) in i.roka[self.id_igre] or i == igralec)]
         else:
             self.barva_kralja = None
             self.solo = True
@@ -57,25 +57,34 @@ class Navadna_igra():
             else:
                 raise Exception('Ni implentirano '+str(self.igra))
             if self.igra != Tip_igre.Solo_brez:
-                stevilka_kupcka = self.igralec.menjaj_iz_talona(deepcopy(kupcki_talona),st_kart_za_menjat)
+                self.igralec.pripravi_izbral_iz_talona(deepcopy( kupcki_talona ), st_kart_za_menjat,self.id_igre)
+                yield 'Pripravljen menjat'
+                stevilka_kupcka = self.igralec.menjaj_iz_talona(deepcopy(kupcki_talona),st_kart_za_menjat,self.id_igre)
                 self.zgodovina.append( ("Talon",(stevilka_kupcka,deepcopy(kupcki_talona))) )
                 for i in self.igralci:
-                    i.izbral_iz_talona(deepcopy(kupcki_talona),stevilka_kupcka)
+                    i.izbral_iz_talona(deepcopy(kupcki_talona),stevilka_kupcka,self.id_igre)
                 del kupcki_talona[stevilka_kupcka]
+            else:
+                yield 'Solo ne rab menjat iz talona'
 
         zacne = 0
+
         for i in range(12):
-            zmaga = self.krog(zacne)
+            krog_gen = self.krog( zacne )
+            for j in range(4):
+                yield next(krog_gen)
+            zmaga =next(krog_gen) # tle more bit
+            assert isinstance(zmaga, int)
             zacne += zmaga
             zacne = zacne%4
         skupek_kupckov = []
         skupek_kupckov2 = []
         for i in self.ekipa:
             #print('Ekipa')
-            skupek_kupckov.extend(i.kupcek)
+            skupek_kupckov.extend(i.kupcek[self.id_igre])
         for i in self.ekipa2:
-            skupek_kupckov2.extend(i.kupcek)
-        if self.igra != Tip_igre.Solo_brez and len(self.ekipa) == 1 and self.barva_kralja != None and Karta(self.barva_kralja,8) in self.igralec.kupcek:
+            skupek_kupckov2.extend(i.kupcek[self.id_igre])
+        if self.igra != Tip_igre.Solo_brez and len(self.ekipa) == 1 and self.barva_kralja != None and Karta(self.barva_kralja,8) in self.igralec.kupcek[self.id_igre]:
             dodaj_talon = skupek_kupckov
         else:
             dodaj_talon = skupek_kupckov2
@@ -84,7 +93,7 @@ class Navadna_igra():
         #print()
         vrednost = Roka.prestej(skupek_kupckov)
         #print('Ekipa 1',vrednost)
-        vrednost2 = Roka.prestej( skupek_kupckov2 )
+        #vrednost2 = Roka.prestej( skupek_kupckov2 )
 
         #print('Ekipa 2',vrednost2)
 
@@ -99,18 +108,20 @@ class Navadna_igra():
                 pisejo[i] = -int(self.igra) + razlika
 
         for i in self.igralci:
-            i.rezultat_igre(pisejo.setdefault(i,0),self.zgodovina)
+            i.rezultat_igre(pisejo.setdefault(i,0),self.zgodovina,self.id_igre)
         #print(self.igra,vrednost,vrednost2,pisejo,razlika)
-        return pisejo
+        yield pisejo
 
     def krog(self,start_index):
         stih = []
         spodnja = None
         for i in range(4):
             igralec = self.igralci[ (start_index+i)%4]
-            mozne = self.mozne_karte( spodnja,igralec.roka)
+            mozne = self.mozne_karte( spodnja,igralec.roka[self.id_igre])
             mozne_copy = deepcopy(mozne)
-            karta = igralec.igraj_karto(stih,mozne,self.zgodovina)
+            igralec.pripravi_igraj_karto( deepcopy(stih), mozne, self.zgodovina,self.id_igre )
+            yield 'Pripravljen igrat karto'
+            karta = igralec.igraj_karto(deepcopy(stih),mozne,self.zgodovina,self.id_igre)
             if karta not in mozne_copy:
                 raise Exception(str(igralec)+str(igralec.__class__)+' Karte ne mores igarti. Karta: '+str(karta)+' karte na mizi:'+str(stih)+' Roka'+str(igralec.roka)+'Mozne'+str(mozne) + 'deep mozne:'+str(mozne_copy))
             self.zgodovina.append((igralec,karta))
@@ -121,13 +132,13 @@ class Navadna_igra():
 
         zmaga = self.pobere_stih(stih)
         #print(self.igralci[(start_index+zmaga)%4].ime, stih )
-        self.igralci[(start_index+zmaga)%4].kupcek.extend(stih)
+        self.igralci[(start_index+zmaga)%4].kupcek[self.id_igre].extend(stih)
         #print()
         zmagovalni_index = (start_index+zmaga)%4
         for i in range(4):
-            self.igralci[i].rezultat_stiha(stih,i == zmagovalni_index)
+            self.igralci[i].rezultat_stiha(stih,i == zmagovalni_index,self.id_igre)
 
-        return zmaga
+        yield zmaga
 
     def pobere_stih(self,stih):
         zmaga= 0

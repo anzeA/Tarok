@@ -13,39 +13,47 @@ solo = None, navadna igra
     'solo_brez' je solo brez talona 
 '''
 class Klop():
-    def __init__(self,igralci,talon):
+    def __init__(self,igralci,talon,id_igre):
         self.igralci = igralci
         self.talon = talon
         self.zgodovina = []
-
+        self.id_igre = id_igre
 
     def start(self):
         #print('Klop')
+        yield 'Pripravljen menjat'  # to je sam zarad konsistence
+
         zacne = 0
         for i in range(12):
-            zmaga = self.krog(zacne)
+            krog_gen = self.krog( zacne )
+            for j in range( 4 ):
+                yield next( krog_gen )
+            zmaga = next( krog_gen )  # tle more bit
+            assert isinstance( zmaga, int )
             zacne += zmaga
             zacne = zacne%4
 
-        pisejo = {i:-Roka.prestej(i.kupcek) for i in self.igralci}
+        pisejo = {i:-Roka.prestej(i.kupcek[self.id_igre]) for i in self.igralci}
         if any( [v < -35 for v in pisejo.values() ] ):
             for i in self.igralci:
-                if Roka.prestej(i.kupcek) <  -35:
+                if Roka.prestej(i.kupcek[self.id_igre]) <  -35:
                     pisejo[i] = -70
                 else:
                     pisejo[i] = 0
         for k,v in pisejo.items():
-            k.rezultat_igre(v,self.zgodovina)
-        return pisejo
+            k.rezultat_igre(v,self.zgodovina,self.id_igre)
+        yield pisejo
 
     def krog(self,start_index,add_talon=True):
         stih = []
         spodnja = None
         for i in range(4):
             igralec = self.igralci[ (start_index+i)%4]
-            mozne = self.mozne_karte( spodnja,igralec.roka)
+            mozne = self.mozne_karte( spodnja,igralec.roka[self.id_igre])
             mozne_copy = deepcopy(mozne)
-            karta = igralec.igraj_karto(stih,mozne,self.zgodovina)
+            igralec.pripravi_igraj_karto(  deepcopy( stih ), mozne, self.zgodovina, self.id_igre )
+            yield 'Pripravljen igrat karto'
+            karta = igralec.igraj_karto(stih,mozne,self.zgodovina,self.id_igre)
             if karta not in mozne_copy:
                 raise Exception( str( igralec ) + str( igralec.__class__ ) + ' Karte ne mores igarti. Karta: ' + str(
                     karta ) + ' karte na mizi:' + str( stih ) + ' Roka' + str( igralec.roka ) + 'Mozne' + str(
@@ -63,12 +71,12 @@ class Klop():
             self.zgodovina.append( (None, talon_karta) )
         zmaga = self.pobere_stih(stih)
         #print(self.igralci[(start_index+zmaga)%4].ime, stih )
-        self.igralci[(start_index+zmaga)%4].kupcek.extend(stih)
+        self.igralci[(start_index+zmaga)%4].kupcek[self.id_igre].extend(stih)
         zmagovalni_index = (start_index+zmaga)%4
         for i in range(4):
-            self.igralci[i].rezultat_stiha(stih,i == zmagovalni_index)
+            self.igralci[i].rezultat_stiha(stih,i == zmagovalni_index,self.id_igre)
 
-        return zmaga
+        yield zmaga
 
     def pobere_stih(self,stih):
         zmaga= 0

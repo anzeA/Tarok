@@ -1,4 +1,6 @@
 import os
+import random
+
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2' #INFO and WARNING messages are not printed
 print('Tensorflow INFO and WARNING messages are not printed')
 import gc
@@ -29,10 +31,12 @@ def plot_score(path):
     plt.title('Igra za bazo:'+str(path))
     plt.legend(keys)
     plt.show()
+    plt.clf()
+
     keys = list(loss[0].keys())
     keys.sort()
     for k in keys:
-        plt.plot([d[k] for d in loss])
+        plt.plot([d[k] for d in loss if d[k] is not None ])
     plt.xlabel('Igra')
     plt.ylabel('loss')
     plt.legend( keys )
@@ -113,6 +117,7 @@ def main(dir,**kwargs):
             if isinstance(igr,Nevronski_igralec):
                 loss_tmp = igr.nauci()
                 loss[-1][str(igr)] = loss_tmp
+        '''
         for igr in igralci:
             if isinstance(igr,Nevronski_igralec):
                 igr.del_models()
@@ -122,6 +127,7 @@ def main(dir,**kwargs):
         for igr in igralci:
             if isinstance(igr,Nevronski_igralec):
                 igr.load_models()
+        '''
         t = time.time()-t
         print('Time need all:',t)
         scores.append({str(k):v for k,v in tarok.rezultati.items()})
@@ -159,8 +165,16 @@ if __name__ == '__main__':
         shutil.rmtree('test_nan')
     except Exception as e:
         print(e)
-    main('test_double_1e-2_solo',learning_rate=0.01,debug=False)
-    #plot_score('test_doublw')
+    #main('test_nan',learning_rate=0.01,debug=True)
+    #os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+    random.seed(42)
+    t = Tarok([Nevronski_igralec('test_par',save_path='test_par',random_card=0) for i in range(4)],250)
+    t.paralel_start()
+    #t.start()
+    #main('test_double_1e-2_solo',learning_rate=0.01,debug=False) # Nadaljuj super rezultati
+
+
+    #plot_score('test_double_1e-2_solo')
     #plot_score('test_doublwlr1e-2')
     #plot_score('test_lr1e-3')
     #plot_score('test_doublw')
