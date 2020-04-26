@@ -110,13 +110,14 @@ def main(dir,**kwargs):
         shuffle(igralci)
         t = time.time()
         tarok = Tarok( igralci, num_games)
-        tarok.start()
+        tarok.paralel_start()
         print('Time need for',num_games,'game:',time.time()-t)
         loss.append({})
         for igr in igralci:
             if isinstance(igr,Nevronski_igralec):
                 loss_tmp = igr.nauci()
                 loss[-1][str(igr)] = loss_tmp
+                igr.clean() #clean old data empty keys and so on
         '''
         for igr in igralci:
             if isinstance(igr,Nevronski_igralec):
@@ -159,8 +160,6 @@ if __name__ == '__main__':
     #main(*naredi_nove_igralce('test_max'))
     print('Support Cuda:',tf.test.is_built_with_cuda())
     print('Tf version:',tf.__version__)
-    #tf.keras.applications.ResNet101
-    #input('Zelis nadaljevati')
     try:
         shutil.rmtree('test_nan')
     except Exception as e:
@@ -168,10 +167,9 @@ if __name__ == '__main__':
     #main('test_nan',learning_rate=0.01,debug=True)
     #os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
     random.seed(42)
-    t = Tarok([Nevronski_igralec('test_par',save_path='test_par',random_card=0) for i in range(4)],250)
-    t.paralel_start()
-    #t.start()
     #main('test_double_1e-2_solo',learning_rate=0.01,debug=False) # Nadaljuj super rezultati
+    #main('test_double_1e-2_solo',learning_rate=0.01,debug=False) # Nadaljuj super rezultati
+    main('test_nan',learning_rate=0.01,debug=False) # Nadaljuj super rezultati
 
 
     #plot_score('test_double_1e-2_solo')

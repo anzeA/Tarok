@@ -182,19 +182,23 @@ class Nevronski_igralec(Igralec):
         super().__init__(ime)
         self.zgodovina = {} #cele igre
         self.roka2tocke =[]
-        self.zalaganje2tocke =[] #
-        #print('Poprav zalaganje2tocke')
+        self.zalaganje2tocke ={} #
         self.trenutna_igra = dict()  #trenutna igra (stanje nagrada)
         self.zacetna_roka = dict()
         self.tip_igre = dict()
-        self.moja_igra= None # tmp za shranjevanje podatkov kaj sem igral
-        self.barva_kralja = None
-        self.lic  = None
-        self.stanje = None
-        self.next_Q_max = None
-        self.zalozil = None
-        self.learning_rate= learning_rate
+        self.moja_igra= dict() # tmp za shranjevanje podatkov kaj sem igral
+        self.barva_kralja = dict()
+        self.lic  = dict()
+        self.stanje = dict()
+        self.next_Q_max = dict()
+        self.zalozil = dict()
+        self.if_play_barva_kralja = dict()
+        self.igrana_karta = dict()
         self.igralci2index = {}
+        self.index_igralec_ki_igra = {}
+        self.p = {}
+
+        self.learning_rate= learning_rate
         self.save_path = save_path
         self.random_card = random_card
         self.final_reword_factor = final_reword_factor
@@ -202,6 +206,8 @@ class Nevronski_igralec(Igralec):
         self.igra2index,self.index2igra,self.igra_zalozi2index = Nevronski_igralec.generete_igra2index_and_index2igra()
         self.t = 0
         self.since_last_update = 0
+
+
         if ignor_models == False:
             if load_path is not None:
                 print('Load models')
@@ -215,6 +221,11 @@ class Nevronski_igralec(Igralec):
                 self.load_path = self.save_path
                 print( 'Create new models' )
                 self.models = self.create_models()
+
+        keys = ['Navadna_igra', 'Klop','Solo','Berac','Vrednotenje_roke','Zalaganje']  # ,'Berac':train.test_berac(),'Solo':train.test_solo(),
+
+        self.predict_queue = {k:[]for k in keys}  #
+        self.predicted_resoult = {k: {}for k in keys}  # key is tip napovidi, in id_igre value je predikcija
 
     def create_models(self):
         return {'Navadna_igra': train.test_navadna_mreza(self.learning_rate), 'Klop': train.test_klop(self.learning_rate),'Solo':train.test_solo(self.learning_rate),'Berac':train.test_berac(self.learning_rate),
@@ -233,163 +244,199 @@ class Nevronski_igralec(Igralec):
         self.models = None
 
     def nova_igra(self,roka,igralci,id_igre):
-        self.tip_igre = None
-        self.lic = None
-        self.next_Q_max = None
-        self.zalozil = None
-        self.stanje = None
-        self.zacetna_roka =deepcopy(roka)
-        self.igralci2index = {}
+        self.tip_igre[id_igre] = None
+        self.lic[id_igre] = None
+        self.next_Q_max[id_igre] = None
+        self.zalozil[id_igre] = None
+        self.stanje[id_igre] = None
+        self.zacetna_roka[id_igre] =deepcopy(roka)
+        self.igralci2index[id_igre] = {}
+        self.index_igralec_ki_igra[id_igre] = None
+        self.p[id_igre] = None
+        #self.zalaganje2tocke[id_igre] = None
+        self.trenutna_igra[id_igre] = []
+        #self.roka2tocke[id_igre] = None
+        self.igrana_karta[id_igre] = None
         for i in igralci:
             if i != self:
-                self.igralci2index[i] = len(self.igralci2index)
-        self.igralci2index[self] = 3
+                self.igralci2index[id_igre][i] = len(self.igralci2index[id_igre])
+        self.igralci2index[id_igre][self] = 3
         self.t = 0
-        super().nova_igra(roka,igralci)
+        super().nova_igra(roka,igralci,id_igre)
 
     def pripavi_licitiram(self,id_igre):
-        raise NotImplementedError(str(id_igre))
+        x = np.zeros( (1, 54) )
+        x[0, [k.v_id() for k in self.roka[id_igre]]] = 1
+        self.predict_queue['Vrednotenje_roke'].append((id_igre,x))
 
-    def  predict_licitiram(self):
-        raise NotImplementedError()
+    def predict_licitiram(self):
+        X = np.zeros( (len(self.predict_queue['Vrednotenje_roke']),54) )
+        for i,(id,x) in enumerate(self.predict_queue['Vrednotenje_roke']):
+            X[i,:] = x
+        Y = self.models['Vrednotenje_roke'].predict_on_batch( X )
+        for i,(id, x) in enumerate(self.predict_queue['Vrednotenje_roke']):
+            self.predicted_resoult['Vrednotenje_roke'][id] = Y[i,:]
+        self.predict_queue['Vrednotenje_roke'] = []
+
 
     def licitiram(self,min_igra,id_igre,obvezno=None,prednost =False):
-        if self.lic is None:
-            x = np.zeros((1,54))
-            x[0,[k.v_id() for k in self.roka]] = 1
-            p = self.models['Vrednotenje_roke'].predict(x)
+        if self.lic[id_igre] is None:
+            p = self.predicted_resoult['Vrednotenje_roke'][id_igre]
             id = np.argmax( p )
-            self.lic,self.if_play_barva_kralja = self.index2igra[id]
+            self.lic[id_igre],self.if_play_barva_kralja[id_igre] = self.index2igra[id]
 
             if random.random() < self.random_card:
-                self.lic, self.if_play_barva_kralja = random.choice( list(self.index2igra.values()) )
+                self.lic[id_igre], self.if_play_barva_kralja[id_igre] = random.choice( list(self.index2igra.values()) )
 
-        if self.lic == Tip_igre.Odprti_berac:
-            self.lic,self.if_play_barva_kralja = Tip_igre.Berac,None
-        self.lic = super().licitiram( self.lic, min_igra, obvezno, prednost )
+        assert self.lic[id_igre] != Tip_igre.Odprti_berac
+        self.lic[id_igre] = super().licitiram( self.lic[id_igre], min_igra,id_igre, obvezno, prednost )
         #print(self.lic)
-        return self.lic
+        return self.lic[id_igre]
 
     def izberi_barvo_kralja(self,id_igre):
-        assert self.if_play_barva_kralja is not None
-        return self.if_play_barva_kralja
+        assert self.if_play_barva_kralja[id_igre] is not None
+        return self.if_play_barva_kralja[id_igre]
 
     def pripravi_igraj_karto( self, karte_na_mizi, mozne, zgodovina, id_igre ):
-        raise NotImplementedError()
+        self.stanje[id_igre] = self.stanje_v_vektor_rek_navadna( karte_na_mizi, mozne, zgodovina,id_igre )
+        self.predict_queue[self.tip_igre[id_igre]].append( (id_igre,self.stanje[id_igre]))
 
-    def igraj_karto(self,karte_na_mizi,mozne,zgodovina):
-        self.stanje = self.stanje_v_vektor_rek_navadna( karte_na_mizi, mozne, zgodovina )
+    def predict_igraj_karto(self):
+        for tip_igre,X_list in self.predict_queue.items():
+            if len(X_list) == 0:
+                continue
+            stanje = X_list[0][1]
+            X = []
+            for n in stanje:
+                shape = list( n.shape )
+                shape[0] = len( X_list )
+                shape = tuple( shape )
+                X.append( np.zeros( shape ) )
+            del stanje
+            # print([n.shape for n in X])
+            for i,(id, stanje) in  enumerate(X_list) :
+                for j, x in enumerate( stanje ):
+                    X[j][i, :] = x
+            Y = self.models[tip_igre].predict_on_batch( X )
+           # print('Napovedal',tip_igre)
+            for i,(id, stanje) in enumerate(X_list):
+                self.predicted_resoult[tip_igre][id] =Y[i,:]
+
+        for k in self.predict_queue.keys():
+            self.predict_queue[k]  = []
+
+    def igraj_karto(self,karte_na_mizi,mozne,zgodovina,id_igre):
         # self.t += time.time()-t
-        p = self.models[self.tip_igre].predict_on_batch( self.stanje[:-1] )[0]
+        p = self.predicted_resoult[self.tip_igre[id_igre]][id_igre]
         #p = self.models[self.tip_igre].predict( self.stanje[:-1],batch_size=1,use_multiprocessing=True )[0]
         mozne_id = [k.v_id() for k in mozne]
         id = np.argmax( p[mozne_id] )
-
         karta = mozne[id]
-        self.next_Q_max = p[karta.v_id()]
+        self.next_Q_max[id_igre] = p[karta.v_id()]
         if random.random() < self.random_card:
             karta = random.choice( mozne )
-        self.igrana_karta = karta
-        return super().igraj_karto(karta)
+        self.igrana_karta[id_igre] = karta
+        self.p[id_igre] = p
+        return super().igraj_karto(karta,id_igre)
 
-    def pripravi_izbral_iz_talona(self,talon,st_kupcka,id):
-        raise NotImplementedError()
-
+    def pripravi_izbral_iz_talona(self,talon,st_kart,id_igre):
+        stanje = self.menjaj_talon_v_vektor( talon,id_igre )
+        self.zalaganje2tocke[id_igre] = [stanje]
+        self.predict_queue['Zalaganje'].append( (id_igre,stanje) )
 
     def predict_izberi_iz_talona(self):
-        raise NotImplementedError()
-
+        self.predict_igraj_karto()
 
     def menjaj_iz_talona(self,kupcki,st_kart,id_igre):
-        stanje = self.menjaj_talon_v_vektor(kupcki)
-        p = self.models['Zalaganje'].predict_on_batch(stanje)[0]
+
+        p = self.predicted_resoult['Zalaganje'][id_igre]
         izbrani_kupcek = np.argmax(p[54:54+len(kupcki)])
 
         if random.random() < self.random_card:
             izbrani_kupcek = random.randint(0,len(kupcki)-1)
 
-        self.roka.dodaj_karte(kupcki[izbrani_kupcek])
-        mozno = self.roka.mozno_zalozit()
+        self.roka[id_igre].dodaj_karte(kupcki[izbrani_kupcek])
+        mozno = self.roka[id_igre].mozno_zalozit()
         zalozi = [k.v_id() for k in mozno]
         if random.random() < self.random_card:
             zalozi = random.sample(mozno,st_kart)
         else:
             zalozi = [mozno[i] for i in np.argsort(p[zalozi])[-st_kart:]]
-        self.kupcek.extend(zalozi)
-        self.zalozil = True
+        self.kupcek[id_igre].extend(zalozi)
+        self.zalozil[id_igre] = True
         for k in zalozi:
-            self.roka.igraj_karto(k)
+            self.roka[id_igre].igraj_karto(k)
 
-        self.zalaganje2tocke.append([stanje,zalozi,st_kart,None,mozno])
+        self.zalaganje2tocke[id_igre] = [self.zalaganje2tocke[id_igre][0],zalozi,st_kart,None,mozno]
         return izbrani_kupcek
 
     def rezultat_stiha(self, stih, sem_pobral, id_igre): #crate train data
         #print('Rezultat stiha',stih,sem_pobral)
         vrednost_stiha = Roka.vrednost_stiha(stih)
-        v = self.igrana_karta.vrednost()
-
-        dy = np.zeros(54)#self.p
-        dy[self.stanje[-1][0]== 0] = -70
+        v = self.igrana_karta[id_igre].vrednost()
+        igrana_karta = self.igrana_karta[id_igre]
+        dy = self.p[id_igre]#np.zeros(54)
+        dy[self.stanje[id_igre][-1][0]== 0] = -70
         if self.tip_igre ==  "Klop":
             if sem_pobral:
-                dy[Karta.v_id( self.igrana_karta )] = -vrednost_stiha
+                dy[Karta.v_id( igrana_karta )] = -vrednost_stiha
             else:
-                dy[Karta.v_id( self.igrana_karta )] = vrednost_stiha
+                dy[Karta.v_id( igrana_karta[id_igre] )] = vrednost_stiha
         elif self.tip_igre == 'Berac':
             if self.index_igralec_ki_igra ==3: # jaz igram
                 if sem_pobral:
-                    dy[Karta.v_id( self.igrana_karta )] = -1
+                    dy[Karta.v_id( igrana_karta )] = -1
                 else:
-                    dy[Karta.v_id( self.igrana_karta )] = 1
+                    dy[Karta.v_id( igrana_karta )] = 1
             else:
                 if sem_pobral:
-                    dy[Karta.v_id( self.igrana_karta )] = -1
+                    dy[Karta.v_id( igrana_karta )] = -1
                 else:
-                    dy[Karta.v_id( self.igrana_karta )] = 1
+                    dy[Karta.v_id( igrana_karta )] = 1
                 # ce nasprotnik zmaga
 
         else:
             if sem_pobral:
-                dy[Karta.v_id( self.igrana_karta )] = vrednost_stiha
+                dy[Karta.v_id( igrana_karta )] = vrednost_stiha
             else:
-                dy[Karta.v_id( self.igrana_karta )] = -vrednost_stiha#-(v + vrednost_stiha) / vrednost_stiha
-        if len (self.trenutna_igra ) != 0:
-            self.trenutna_igra[-1] [3] = self.next_Q_max
-        self.trenutna_igra.append( [self.stanje, dy,self.igrana_karta,None] )
+                dy[Karta.v_id( igrana_karta )] = -vrednost_stiha#-(v + vrednost_stiha) / vrednost_stiha
+        if len (self.trenutna_igra[id_igre] ) != 0:
+            self.trenutna_igra[id_igre][-1] [3] = self.next_Q_max[id_igre]
+        self.trenutna_igra[id_igre].append( [self.stanje[id_igre], dy,igrana_karta,None] )
 
     def rezultat_igre(self,st_tock,povzetek_igre,id_igre):
-        if self.lic in [Tip_igre.Ena,Tip_igre.Dve,Tip_igre.Tri]:
-            index_igre = self.igra2index[(self.lic, self.barva_kralja)]
+        if self.lic[id_igre] in [Tip_igre.Ena,Tip_igre.Dve,Tip_igre.Tri]:
+            index_igre = self.igra2index[(self.lic[id_igre], self.barva_kralja[id_igre])]
         else:
-            if self.lic == Tip_igre.Klop:
+            if self.lic[id_igre] == Tip_igre.Klop:
                 index_igre = self.igra2index[(Tip_igre.Naprej, None)]
             else:
-                index_igre = self.igra2index[(self.lic, None)]
-        self.roka2tocke.append( (self.zacetna_roka,st_tock,index_igre))
-        if self.zalozil is not None:
-            self.zalaganje2tocke[-1][-2] = st_tock
+                index_igre = self.igra2index[(self.lic[id_igre], None)]
+        self.roka2tocke.append( (self.zacetna_roka[id_igre],st_tock,index_igre))
+        if self.zalozil[id_igre] is not None:
+            self.zalaganje2tocke[id_igre][-2] = st_tock
 
         #final reword za beraca ker sicer je v vsaem rimeru 0 more zajebat tistega ki igra
-        if self.tip_igre == 'Berac' and self.index_igralec_ki_igra != 3 and len(self.roka) == 0:
+        if self.tip_igre[id_igre] == 'Berac' and self.index_igralec_ki_igra[id_igre] != 3 and len(self.roka[id_igre]) == 0:
             st_tock = -20
-        elif self.tip_igre == 'Berac' and self.index_igralec_ki_igra != 3 and len( self.roka ) != 0:
+        elif self.tip_igre[id_igre] == 'Berac' and self.index_igralec_ki_igra[id_igre] != 3 and len( self.roka[id_igre] ) != 0:
             st_tock = 20
-        self.trenutna_igra[-1][3] = st_tock # final reword
+        self.trenutna_igra[id_igre][-1][3] = st_tock # final reword
 
-        for stanje,dy,igrana_karta,next_max in self.trenutna_igra:
+        for stanje,dy,igrana_karta,next_max in self.trenutna_igra[id_igre]:
             dy[igrana_karta.v_id()] = dy[igrana_karta.v_id()]+next_max*self.final_reword_factor
-            (self.zgodovina.setdefault( (self.tip_igre,stanje[0].shape[1]),[] )).append((stanje,dy))
+            (self.zgodovina.setdefault( (self.tip_igre[id_igre],stanje[0].shape[1]),[] )).append((stanje,dy))
         #print('rezultat_igre end',str(self.zgodovina[:1])[:10])
 
-        self.trenutna_igra = []
+        self.trenutna_igra[id_igre] = []
         self.since_last_update = self.since_last_update +1
 
     def konec_licitiranja(self,igralec_ki_igra,tip_igre,id_igre,barva_kralja=None):
-        self.tip_igre = Nevronski_igralec.tip_igre_v_tip_izbire[tip_igre]
-        self.barva_kralja = barva_kralja
-        self.index_igralec_ki_igra = self.igralci2index[igralec_ki_igra]
+        self.tip_igre[id_igre] = Nevronski_igralec.tip_igre_v_tip_izbire[tip_igre]
+        self.barva_kralja[id_igre] = barva_kralja
+        self.index_igralec_ki_igra[id_igre] = self.igralci2index[id_igre][igralec_ki_igra]
 
-    def stanje_v_vektor_rek_navadna(self,karte_na_mizi,mozne,zgodovina):
+    def stanje_v_vektor_rek_navadna(self,karte_na_mizi,mozne,zgodovina,id_igre):
         #[input_layer_nasprotiki, kralj, roka_input, talon_input, index_tistega_ki_igra, mozne]
         st_igranih_kart = 0
         for ig,k in zgodovina:
@@ -398,11 +445,11 @@ class Nevronski_igralec(Igralec):
 
         #st_igranih_kart = st_igranih_kart + (4- st_igranih_kart%4)
         roka = np.zeros(54)
-        roka[[k.v_id() for k in self.zacetna_roka]] = 1
+        roka[[k.v_id() for k in self.zacetna_roka[id_igre]]] = 1
         #barva_kralja
         barva_kralja = np.zeros(4)
-        if self.barva_kralja is not None:
-            barva_kralja[ int(self.barva_kralja) ] = 1
+        if self.barva_kralja[id_igre] is not None:
+            barva_kralja[ int(self.barva_kralja[id_igre]) ] = 1
 
         #roka
         if st_igranih_kart > 0:
@@ -413,20 +460,20 @@ class Nevronski_igralec(Igralec):
             roka_input = np.zeros( (1, 54) )
             roka_input[0,:] = roka
         # TODO talon
-        if self.tip_igre == "Navadna_igra":
+        if self.tip_igre[id_igre] == "Navadna_igra":
             talon_input = np.zeros(( 6,55))
-        elif self.tip_igre == 'Klop':
+        elif self.tip_igre[id_igre] == 'Klop':
             talon_input = np.zeros((54,))
-        elif self.tip_igre == 'Solo':
+        elif self.tip_igre[id_igre] == 'Solo':
             talon_input = np.zeros(( 6,55))
-        elif self.tip_igre == 'Berac':
+        elif self.tip_igre[id_igre] == 'Berac':
             talon_input = None#np.zeros(( 6,55))
         else:
             raise Exception("Ni implementerano"+str(self.tip_igre))
 
 
         index_tistega_ki_igra = np.zeros(4)
-        index_tistega_ki_igra[self.index_igralec_ki_igra] = 1
+        index_tistega_ki_igra[self.index_igralec_ki_igra[id_igre]] = 1
         mozne_vec = np.zeros( 54 )
         i = 0
         for  (igralec,k) in zgodovina:
@@ -442,7 +489,7 @@ class Nevronski_igralec(Igralec):
                             talon_input[stevec_karte_v_talonu, 54] = 1
                         stevec_karte_v_talonu = stevec_karte_v_talonu+1
             elif igralec is not self:
-                input_layer_nasprotiki[i,self.igralci2index[igralec],k.v_id()] = 1
+                input_layer_nasprotiki[i,self.igralci2index[id_igre][igralec],k.v_id()] = 1
                 i +=1
             elif igralec is self:
                 roka_input[i,:] = roka
@@ -453,28 +500,27 @@ class Nevronski_igralec(Igralec):
 
         ids = [k.v_id() for k in mozne]
         mozne_vec[ids] = 1
-        if self.tip_igre == "Navadna_igra":
+        if self.tip_igre[id_igre] == "Navadna_igra":
             r =  [input_layer_nasprotiki, barva_kralja, roka_input, talon_input, index_tistega_ki_igra, mozne_vec]
             return [np.expand_dims(n,axis=0) for n in r]
-        elif self.tip_igre == "Solo":
+        elif self.tip_igre[id_igre] == "Solo":
             r =  [input_layer_nasprotiki, roka_input, talon_input, index_tistega_ki_igra, mozne_vec]
             return [np.expand_dims(n,axis=0) for n in r]
-        elif self.tip_igre == 'Klop':
+        elif self.tip_igre[id_igre] == 'Klop':
             r = [input_layer_nasprotiki, roka_input, talon_input, mozne_vec]
             return [np.expand_dims( n, axis=0 ) for n in r]
-        elif self.tip_igre == 'Berac':
+        elif self.tip_igre[id_igre] == 'Berac':
             r = [input_layer_nasprotiki,roka_input,index_tistega_ki_igra,mozne_vec]
             return [np.expand_dims( n, axis=0 ) for n in r]
         else:
             raise Exception("Ni implementerano")
 
-    def menjaj_talon_v_vektor(self,kupcki):
-        l = []
+    def menjaj_talon_v_vektor(self,kupcki,id_igre):
         roka = np.zeros((1,54))
         talon = np.zeros((1,54,6))
         igra = np.zeros((1,15))
-        igra[0,self.igra_zalozi2index[(self.lic,self.barva_kralja)]] = 1
-        roka[0,[k.v_id() for k in self.roka]] = 1
+        igra[0,self.igra_zalozi2index[(self.lic[id_igre],self.barva_kralja[id_igre])]] = 1
+        roka[0,[k.v_id() for k in self.roka[id_igre]]] = 1
         for i,k in enumerate(kupcki):
             talon[0,[karta.v_id() for karta in k],i] = 1
         return [roka,talon,igra]
@@ -493,7 +539,6 @@ class Nevronski_igralec(Igralec):
             dy = np.zeros((len(v),54))
             for n in stanje:
                 shape = list(n.shape)
-
                 shape[0] = len(v)
                 shape = tuple(shape)
                 X.append(np.zeros(shape))
@@ -510,11 +555,11 @@ class Nevronski_igralec(Igralec):
                     except Exception as e:
                         raise Exception(str(e)+' '+ str((tip_igre,len(v))))
             #assert np.isnan( X ).any()
-            p = self.models[tip_igre].predict_on_batch(X[:-1])
-            non_z = dy.nonzero()
-            p[non_z] = dy[non_z]
+            #p = self.models[tip_igre].predict_on_batch(X[:-1])
+            #non_z = dy.nonzero()
+            #p[non_z] = dy[non_z]
 
-            hist =self.models[tip_igre].fit( X[:-1], p,epochs=10,verbose=0,use_multiprocessing=True )
+            hist =self.models[tip_igre].fit( X[:-1], dy,epochs=10,verbose=0,use_multiprocessing=True )
             loss_vals.append(hist.history['loss'][-1])
             del hist
             '''
@@ -529,50 +574,50 @@ class Nevronski_igralec(Igralec):
             '''
 
         "Train roka"
-        X = np.zeros((len(self.roka2tocke),54))
-        for i,(r,t,tip) in enumerate(self.roka2tocke):
-            X[i,[k.v_id() for k in r]] = 1
-        y = self.models['Vrednotenje_roke'].predict_on_batch(X)
-        #assert np.isnan( y ).any() == False and np.isinf( y ).any() == False
-        for i,(r,t,index_igre) in enumerate(self.roka2tocke):
-            y[i,index_igre] = t
-        #assert any([np.isnan(x).any() or np.isinf( x ).any() for x in X]) == False
-        #assert np.isnan(y).any() == False and np.isinf(y).any() == False
-        hist = self.models['Vrednotenje_roke'].fit(X,y,epochs=10,verbose=0,use_multiprocessing=True )
-        loss_vals.append( hist.history['loss'][-1] )
-        if not math.isfinite( hist.history['loss'][-1] ):
-            print(hist.history['loss'][-1])
-            print(self)
-            raise AssertionError()
-        del hist
+        if len(self.roka2tocke)>0:
+            X = np.zeros((len(self.roka2tocke),54))
+            for i,(r,t,tip) in enumerate(self.roka2tocke):
+                X[i,[k.v_id() for k in r]] = 1
+            y = self.models['Vrednotenje_roke'].predict_on_batch(X)
+            #assert np.isnan( y ).any() == False and np.isinf( y ).any() == False
+            for i,(r,t,index_igre) in enumerate(self.roka2tocke):
+                y[i,index_igre] = t
+            #assert any([np.isnan(x).any() or np.isinf( x ).any() for x in X]) == False
+            #assert np.isnan(y).any() == False and np.isinf(y).any() == False
+            hist = self.models['Vrednotenje_roke'].fit(X,y,epochs=10,verbose=0,use_multiprocessing=True )
+            loss_vals.append( hist.history['loss'][-1] )
+            if not math.isfinite( hist.history['loss'][-1] ):
+                print(hist.history['loss'][-1])
+                print(self)
+                raise AssertionError()
+            del hist
 
         '''Train zalozi'''
-        n_training_samp = len( self.zalaganje2tocke )
-        X = [np.zeros( (n_training_samp, 54 ) ),np.zeros( (n_training_samp,54,6) ),np.zeros( (n_training_samp,15) ) ]
-        for i, (stanje,zalozi,st_kart,st_tock,mozno) in enumerate( self.zalaganje2tocke ):
-            for j in range(3):
-                X[j][i,:] = stanje[j]
+        n_training_samp = len( self.zalaganje2tocke.values() )
+        if n_training_samp>0:
+            X = [np.zeros( (n_training_samp, 54) ), np.zeros( (n_training_samp, 54, 6) ),
+                 np.zeros( (n_training_samp, 15) )]
+            for i, (stanje, zalozi, st_kart, st_tock, mozno) in enumerate( self.zalaganje2tocke.values() ):
+                for j in range( 3 ):
+                    X[j][i, :] = stanje[j]
 
-        y = self.models['Zalaganje'].predict_on_batch( X )
-        #assert np.isnan( y ).any() == False and np.isinf( y ).any() == False
-        #assert any( [np.isnan( x ).any() or np.isinf( x ).any() for x in X] ) == False
+            y = self.models['Zalaganje'].predict_on_batch( X )
+            for i, (stanje,zalozi,st_kart,st_tock,mozno) in enumerate( self.zalaganje2tocke.values()):
+                y[i,[id for id in range(54) if Karta.iz_id(id) not in mozno]] = -70
+                y[i, [k.v_id() for k in zalozi]] = st_tock
+                y[i,54+6//st_kart:] = -70
+            #assert np.isnan( y ).any() == False and np.isinf( y ).any() == False
+            #assert any( [np.isnan( x ).any() or np.isinf( x ).any() for x in X] ) == False
 
-        for i, (stanje,zalozi,st_kart,st_tock,mozno) in enumerate( self.zalaganje2tocke ):
-            y[i,[id for id in range(54) if Karta.iz_id(id) not in mozno]] = -70
-            y[i, [k.v_id() for k in zalozi]] = st_tock
-            y[i,54+6//st_kart:] = -70
-        #assert np.isnan( y ).any() == False and np.isinf( y ).any() == False
-        #assert any( [np.isnan( x ).any() or np.isinf( x ).any() for x in X] ) == False
-
-        hist = self.models['Zalaganje'].fit( X, y, epochs=10, verbose=0,use_multiprocessing=True  )
-        assert math.isfinite( hist.history['loss'][-1] )
-        loss_vals.append( hist.history['loss'][-1] )
-        del hist
+            hist = self.models['Zalaganje'].fit( X, y, epochs=10, verbose=0,use_multiprocessing=True  )
+            assert math.isfinite( hist.history['loss'][-1] )
+            loss_vals.append( hist.history['loss'][-1] )
+            del hist
         if save:
             self.save_models()
         self.zgodovina = {}
         self.roka2tocke = []
-        self.zalaganje2tocke = []
+        self.zalaganje2tocke = {}
         time_train = time.time() - time_train
         self.final_reword_factor = min(self.final_reword_factor*1.1,0.99)
         self.random_card = max(0.05,self.random_card*0.9)
@@ -618,6 +663,25 @@ class Nevronski_igralec(Igralec):
     def save_models(self):
         for k,v in self.models.items():
             v.save(os.path.join(self.save_path,k+".h5"),include_optimizer=False)
+
+    def clean(self):
+        self.zgodovina = {}
+        self.roka2tocke =[]
+        self.zalaganje2tocke ={}
+        self.trenutna_igra = dict()
+        self.zacetna_roka = dict()
+        self.tip_igre = dict()
+        self.moja_igra= dict()
+        self.barva_kralja = dict()
+        self.lic  = dict()
+        self.stanje = dict()
+        self.next_Q_max = dict()
+        self.zalozil = dict()
+        self.if_play_barva_kralja = dict()
+        self.igrana_karta = dict()
+        self.igralci2index = {}
+        self.index_igralec_ki_igra = {}
+        self.p = {}
 
 
 class Double_Nevronski_Igralec(Nevronski_igralec):
@@ -687,18 +751,48 @@ class Double_Nevronski_Igralec(Nevronski_igralec):
             self.save_models()
         return mean_loss
 
-    def igraj_karto(self,karte_na_mizi,mozne,zgodovina):
-        self.stanje = self.stanje_v_vektor_rek_navadna( karte_na_mizi, mozne, zgodovina )
+
+    def predict_igraj_karto(self):
+        for tip_igre,X_list in self.predict_queue.items():
+            if len(X_list) == 0:
+                continue
+            stanje = X_list[0][1]
+            X = []
+            for n in stanje:
+                shape = list( n.shape )
+                shape[0] = len( X_list )
+                shape = tuple( shape )
+                X.append( np.zeros( shape ) )
+            del stanje
+            # print([n.shape for n in X])
+            for i,(id, stanje) in  enumerate(X_list) :
+                for j, x in enumerate( stanje ):
+                    X[j][i, :] = x
+            Y = self.models[tip_igre].predict_on_batch( X )
+            if tip_igre == 'Zalaganje':
+                for i, (id, stanje) in enumerate( X_list ):
+                    self.predicted_resoult[tip_igre][id] = Y[i, :]
+            else:
+                Y_b = self.models_B[tip_igre].predict_on_batch( X )
+               # print('Napovedal',tip_igre)
+                for i,(id, stanje) in enumerate(X_list):
+                    self.predicted_resoult[tip_igre][id] =(Y[i,:],Y_b[i,:])
+
+        for k in self.predict_queue.keys():
+            self.predict_queue[k]  = []
+
+    def igraj_karto(self,karte_na_mizi,mozne,zgodovina,id_igre):
         # self.t += time.time()-t
-        p = self.models[self.tip_igre].predict_on_batch( self.stanje[:-1] )[0]
-        p_b = self.models_B[self.tip_igre].predict_on_batch( self.stanje[:-1] )[0]
+        p ,p_b= self.predicted_resoult[self.tip_igre[id_igre]][id_igre]
+        #p = self.models[self.tip_igre].predict( self.stanje[:-1],batch_size=1,use_multiprocessing=True )[0]
         mozne_id = [k.v_id() for k in mozne]
         id = np.argmax( p[mozne_id] )
-
         karta = mozne[id]
-        self.next_Q_max = p_b[karta.v_id()]
+        self.next_Q_max[id_igre] = p_b[karta.v_id()]
         if random.random() < self.random_card:
             karta = random.choice( mozne )
-        self.igrana_karta = karta
-        return Igralec.igraj_karto(self,karta)
+        self.igrana_karta[id_igre] = karta
+        self.p[id_igre] = p
+        return Igralec.igraj_karto(self,karta,id_igre)
+
 

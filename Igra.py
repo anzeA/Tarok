@@ -16,7 +16,7 @@ from Roka import Roka
 from Tip_igre import Tip_igre
 
 class Igra:
-    def __init__(self, igralci,multi_games=False,id=None):
+    def __init__(self, igralci,multi_games=False,id=0):
         self.igralci = igralci
         self.zgodovina = []
         self.multi_games = multi_games
