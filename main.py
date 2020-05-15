@@ -105,7 +105,7 @@ def main(dir,**kwargs):
     with open( loss_file, "rb" ) as input_file:
         loss = pickle.load( input_file )
 
-    num_games= 250
+    num_games= 500
     for i in range( 1000 ):
         shuffle(igralci)
         t = time.time()
@@ -149,8 +149,10 @@ def main(dir,**kwargs):
             keys = list(r.keys())
             keys.sort()
             print([str(k)+': '+str(r[k]) for k in keys])
-        plot_score(dir)
+        if len(scores) > 0 and len(loss) >0:
+            plot_score(dir)
 if __name__ == '__main__':
+
 
     #os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
     #train.model_za_vrednotenje_roke()
@@ -166,17 +168,8 @@ if __name__ == '__main__':
         print(e)
     #main('test_nan',learning_rate=0.01,debug=True)
     #os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
-    random.seed(42)
+    #random.seed(42)
     #main('test_double_1e-2_solo',learning_rate=0.01,debug=False) # Nadaljuj super rezultati
     #main('test_double_1e-2_solo',learning_rate=0.01,debug=False) # Nadaljuj super rezultati
-    main('test_nan',learning_rate=0.01,debug=False) # Nadaljuj super rezultati
-
-
-    #plot_score('test_double_1e-2_solo')
-    #plot_score('test_doublwlr1e-2')
-    #plot_score('test_lr1e-3')
-    #plot_score('test_doublw')
-
-    #print( tf.__version__ )
-    #train.test_navadna_mreza()
-    #train.model_igraj()
+    #main('Pararel_Adam_1e-2',learning_rate=0.01,debug=False) # Nadaljuj super rezultati
+    main('Pararel_Adam_200_1e-2',learning_rate=0.01,debug=False)

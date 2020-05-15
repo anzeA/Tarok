@@ -73,6 +73,7 @@ class Igralec:
 
     def igraj_karto(self, karta,id_igre):
         self.roka[id_igre].igraj_karto(karta)
+        print('Igralec prou klice super v igraj_karto')
         return karta
 
     def rezultat_stiha(self,stih,sem_pobral,id_igre):
@@ -196,7 +197,6 @@ class Nevronski_igralec(Igralec):
         self.igrana_karta = dict()
         self.igralci2index = {}
         self.index_igralec_ki_igra = {}
-        self.p = {}
 
         self.learning_rate= learning_rate
         self.save_path = save_path
@@ -234,10 +234,10 @@ class Nevronski_igralec(Igralec):
     def load_models(self):
         self.models = dict()
         for f in os.listdir( self.load_path ):
-            self.models[f[:-3]] = tf.keras.models.load_model( os.path.join( self.load_path, f ) ,compile=False)
-            self.models[f[:-3]].compile( optimizer=tf.keras.optimizers.Adadelta(lr=self.learning_rate),
-                   loss=tf.keras.losses.Huber(delta=15.0),
-                   metrics=['accuracy'] )
+            self.models[f[:-3]] = tf.keras.models.load_model( os.path.join( self.load_path, f ) ,compile=True)
+            #self.models[f[:-3]].compile( optimizer=tf.keras.optimizers.Adadelta(lr=self.learning_rate),
+            #       loss=tf.keras.losses.Huber(delta=15.0),
+            #       metrics=['accuracy'] )
 
     def del_models(self):
         del self.models
@@ -252,7 +252,6 @@ class Nevronski_igralec(Igralec):
         self.zacetna_roka[id_igre] =deepcopy(roka)
         self.igralci2index[id_igre] = {}
         self.index_igralec_ki_igra[id_igre] = None
-        self.p[id_igre] = None
         #self.zalaganje2tocke[id_igre] = None
         self.trenutna_igra[id_igre] = []
         #self.roka2tocke[id_igre] = None
@@ -336,7 +335,6 @@ class Nevronski_igralec(Igralec):
         if random.random() < self.random_card:
             karta = random.choice( mozne )
         self.igrana_karta[id_igre] = karta
-        self.p[id_igre] = p
         return super().igraj_karto(karta,id_igre)
 
     def pripravi_izbral_iz_talona(self,talon,st_kart,id_igre):
@@ -375,7 +373,7 @@ class Nevronski_igralec(Igralec):
         vrednost_stiha = Roka.vrednost_stiha(stih)
         v = self.igrana_karta[id_igre].vrednost()
         igrana_karta = self.igrana_karta[id_igre]
-        dy = self.p[id_igre]#np.zeros(54)
+        dy = np.zeros(54)
         dy[self.stanje[id_igre][-1][0]== 0] = -70
         if self.tip_igre ==  "Klop":
             if sem_pobral:
@@ -445,6 +443,9 @@ class Nevronski_igralec(Igralec):
 
         #st_igranih_kart = st_igranih_kart + (4- st_igranih_kart%4)
         roka = np.zeros(54)
+        zalozil = np.zeros(54)
+        if self.zalozil[id_igre] is not None:
+            zalozil[ [k.v_id() for k in self.zalaganje2tocke[id_igre][1]] ] = 1
         roka[[k.v_id() for k in self.zacetna_roka[id_igre]]] = 1
         #barva_kralja
         barva_kralja = np.zeros(4)
@@ -501,10 +502,10 @@ class Nevronski_igralec(Igralec):
         ids = [k.v_id() for k in mozne]
         mozne_vec[ids] = 1
         if self.tip_igre[id_igre] == "Navadna_igra":
-            r =  [input_layer_nasprotiki, barva_kralja, roka_input, talon_input, index_tistega_ki_igra, mozne_vec]
+            r =  [input_layer_nasprotiki, barva_kralja, roka_input, talon_input, index_tistega_ki_igra,zalozil, mozne_vec]
             return [np.expand_dims(n,axis=0) for n in r]
         elif self.tip_igre[id_igre] == "Solo":
-            r =  [input_layer_nasprotiki, roka_input, talon_input, index_tistega_ki_igra, mozne_vec]
+            r =  [input_layer_nasprotiki, roka_input, talon_input, index_tistega_ki_igra,zalozil, mozne_vec]
             return [np.expand_dims(n,axis=0) for n in r]
         elif self.tip_igre[id_igre] == 'Klop':
             r = [input_layer_nasprotiki, roka_input, talon_input, mozne_vec]
@@ -555,11 +556,11 @@ class Nevronski_igralec(Igralec):
                     except Exception as e:
                         raise Exception(str(e)+' '+ str((tip_igre,len(v))))
             #assert np.isnan( X ).any()
-            #p = self.models[tip_igre].predict_on_batch(X[:-1])
-            #non_z = dy.nonzero()
-            #p[non_z] = dy[non_z]
+            p = self.models[tip_igre].predict_on_batch(X[:-1])
+            non_z = dy.nonzero()
+            p[non_z] = dy[non_z]
 
-            hist =self.models[tip_igre].fit( X[:-1], dy,epochs=10,verbose=0,use_multiprocessing=True )
+            hist =self.models[tip_igre].fit( X[:-1], p,epochs=10,verbose=0,use_multiprocessing=True )
             loss_vals.append(hist.history['loss'][-1])
             del hist
             '''
@@ -622,7 +623,7 @@ class Nevronski_igralec(Igralec):
         self.final_reword_factor = min(self.final_reword_factor*1.1,0.99)
         self.random_card = max(0.05,self.random_card*0.9)
         mean_loss= np.mean( loss_vals )
-        print(datetime.now(), str(self),'Time used:', time_train,self.since_last_update, 'Mean_loss:',mean_loss,'Mean number of data per fit:',np.mean(data_sizes) )
+        print(datetime.now(), str(self),'Time used:', time_train,self.since_last_update, 'Mean_loss:',mean_loss,'Mean number of data per fit:',np.mean(data_sizes),'Sum of data:',np.sum(data_sizes) )
         self.since_last_update = 0
         del loss_vals
         for _ in range(20):
@@ -662,7 +663,7 @@ class Nevronski_igralec(Igralec):
 
     def save_models(self):
         for k,v in self.models.items():
-            v.save(os.path.join(self.save_path,k+".h5"),include_optimizer=False)
+            v.save(os.path.join(self.save_path,k+".h5"),include_optimizer=True)
 
     def clean(self):
         self.zgodovina = {}
@@ -681,7 +682,7 @@ class Nevronski_igralec(Igralec):
         self.igrana_karta = dict()
         self.igralci2index = {}
         self.index_igralec_ki_igra = {}
-        self.p = {}
+        gc.collect()
 
 
 class Double_Nevronski_Igralec(Nevronski_igralec):
@@ -712,31 +713,31 @@ class Double_Nevronski_Igralec(Nevronski_igralec):
     def save_models(self):
         for k,v in self.models.items():
             if k in ['Vrednotenje_roke', 'Zalaganje']:
-                v.save( os.path.join( self.save_path, k + ".h5" ), include_optimizer=False )
+                v.save( os.path.join( self.save_path, k + ".h5" ), include_optimizer=True )
             else:
-                v.save(os.path.join(self.save_path,k+"_A.h5"),include_optimizer=False)
+                v.save(os.path.join(self.save_path,k+"_A.h5"),include_optimizer=True)
         for k,v in self.models_B.items():
-            v.save(os.path.join(self.save_path,k+"_B.h5"),include_optimizer=False)
+            v.save(os.path.join(self.save_path,k+"_B.h5"),include_optimizer=True)
 
     def load_models(self):
         self.models = dict()
         self.models_B = dict()
         for f in os.listdir( self.load_path ):
             if f[-5:-3] == '_A':
-                self.models[f[:-5]] = tf.keras.models.load_model( os.path.join( self.load_path, f ), compile=False )
-                self.models[f[:-5]].compile( optimizer=tf.keras.optimizers.Adadelta(lr=self.learning_rate),
-                   loss=tf.keras.losses.Huber(delta=15.0),
-                   metrics=['accuracy'] )
+                self.models[f[:-5]] = tf.keras.models.load_model( os.path.join( self.load_path, f ), compile=True )
+                #self.models[f[:-5]].compile( optimizer=tf.keras.optimizers.Adadelta(lr=self.learning_rate),
+                #   loss=tf.keras.losses.Huber(delta=15.0),
+                #   metrics=['accuracy'] )
             elif f[-5:-3] == '_B':
-                self.models_B[f[:-5]] = tf.keras.models.load_model( os.path.join( self.load_path, f ), compile=False )
-                self.models_B[f[:-5]].compile( optimizer=tf.keras.optimizers.Adadelta(lr=self.learning_rate),
-                   loss=tf.keras.losses.Huber(delta=15.0),
-                   metrics=['accuracy'] )
+                self.models_B[f[:-5]] = tf.keras.models.load_model( os.path.join( self.load_path, f ), compile=True )
+                #self.models_B[f[:-5]].compile( optimizer=tf.keras.optimizers.Adadelta(lr=self.learning_rate),
+                #   loss=tf.keras.losses.Huber(delta=15.0),
+                #   metrics=['accuracy'] )
             elif f[:-3]  in ['Vrednotenje_roke','Zalaganje']:
-                self.models[f[:-3]] = tf.keras.models.load_model( os.path.join( self.load_path, f ), compile=False )
-                self.models[f[:-3]].compile( optimizer=tf.keras.optimizers.Adadelta(lr=self.learning_rate),
-                   loss=tf.keras.losses.Huber(delta=15.0),
-                   metrics=['accuracy'] )
+                self.models[f[:-3]] = tf.keras.models.load_model( os.path.join( self.load_path, f ), compile=True )
+                #self.models[f[:-3]].compile( optimizer=tf.keras.optimizers.Adadelta(lr=self.learning_rate),
+                   #loss=tf.keras.losses.Huber(delta=15.0),
+                   #metrics=['accuracy'] )
             else:
                 raise IOError( "Napaka pri loadanju modelov. "+str(f) )
 
@@ -749,6 +750,7 @@ class Double_Nevronski_Igralec(Nevronski_igralec):
         del self.models_B['Zalaganje']
         if save:
             self.save_models()
+        gc.collect()
         return mean_loss
 
 
@@ -792,7 +794,6 @@ class Double_Nevronski_Igralec(Nevronski_igralec):
         if random.random() < self.random_card:
             karta = random.choice( mozne )
         self.igrana_karta[id_igre] = karta
-        self.p[id_igre] = p
         return Igralec.igraj_karto(self,karta,id_igre)
 
 

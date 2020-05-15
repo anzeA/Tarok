@@ -7,7 +7,7 @@ def model_za_vrednotenje_roke(lr,l2_rate=0.001):
     model.add(tf.keras.layers.BatchNormalization())
     model.add(tf.keras.layers.Dropout(0.2))
     #model.add( Dense( 30, activation='relu'))
-    model.add( tf.keras.layers.Dense( 16, activation='elu',kernel_regularizer=tf.keras.regularizers.l2(l2_rate),bias_regularizer=tf.keras.regularizers.l2(l2_rate) ) )
+    model.add( tf.keras.layers.Dense( 32, activation='elu',kernel_regularizer=tf.keras.regularizers.l2(l2_rate),bias_regularizer=tf.keras.regularizers.l2(l2_rate) ) )
     model.add( tf.keras.layers.BatchNormalization() )
     model.add( tf.keras.layers.Dropout( 0.2 ) )
     #model.add( Dense( 10, activation='relu' ) )
@@ -20,8 +20,8 @@ def model_za_vrednotenje_roke(lr,l2_rate=0.001):
         1#solo brez
         , activation='linear' ) )
 
-    model.compile( optimizer=tf.keras.optimizers.Adadelta(lr=lr),
-                   loss=tf.keras.losses.Huber(delta=15.0,),
+    model.compile( optimizer=tf.keras.optimizers.Adam(lr=lr),
+                   loss=tf.keras.losses.Huber(delta=25.0,),
                    metrics=['accuracy'] )
     model.summary()
     return model
@@ -43,8 +43,8 @@ def model_za_zalaganje(lr,l2_rate=0.001):
     model = tf.keras.Model( inputs=[roka_input, talon_input, igra_input],
                             outputs=output_layer, name='Zalaganje' )
 
-    model.compile( optimizer=tf.keras.optimizers.Adadelta(lr=lr),
-                   loss=tf.keras.losses.Huber(delta=15.0,),
+    model.compile( optimizer=tf.keras.optimizers.Adam(lr=lr),
+                   loss=tf.keras.losses.Huber(delta=25.0,),
                    metrics=['accuracy'] )
     model.summary()
     return model
@@ -56,23 +56,19 @@ def test_navadna_mreza(lr,l2_rate=0.001):
     n_filters = 8
     #NASPROTNIKI
     input_layer_nasprotiki = tf.keras.layers.Input( shape=(time, 3,channels),name='Nasprotniki' )
-    conv1 = tf.keras.layers.TimeDistributed(tf.keras.layers.Conv1D(n_filters,1,activation='elu'))(input_layer_nasprotiki)
-    conv1 = tf.keras.layers.TimeDistributed(tf.keras.layers.BatchNormalization())(conv1)
-    conv1 = tf.keras.layers.TimeDistributed(tf.keras.layers.Dropout(0.2))(conv1)
-    #conv1 = ConvLSTM2D(filters=n_filters,kernel_size=(1,1),return_sequences=True,activation='elu')( input_layer_nasprotiki )
-    conv1 = tf.keras.layers.TimeDistributed(tf.keras.layers.Flatten())( conv1 )
-    #conv1 = TimeDistributed( Dense(8,activation='elu') )( conv1 )
-    #conv1 = TimeDistributed(BatchNormalization())(conv1)
-    lstm = tf.keras.layers.CuDNNLSTM( 16, return_sequences=True ,kernel_regularizer=tf.keras.regularizers.l2(l2_rate),bias_regularizer=tf.keras.regularizers.l2(l2_rate))( conv1 )
-    lstm = tf.keras.layers.TimeDistributed( tf.keras.layers.Activation( 'elu' ) )( lstm )
+    #conv1 = tf.keras.layers.TimeDistributed(tf.keras.layers.Conv1D(n_filters,1,activation='elu'))(input_layer_nasprotiki)
+    conv1 = tf.keras.layers.TimeDistributed(tf.keras.layers.Flatten())(input_layer_nasprotiki)
+    conv1 = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(32,kernel_regularizer=tf.keras.regularizers.l2(l2_rate),bias_regularizer=tf.keras.regularizers.l2(l2_rate)))(conv1)
+    lstm = tf.keras.layers.CuDNNLSTM( 32, return_sequences=True ,kernel_regularizer=tf.keras.regularizers.l2(l2_rate),bias_regularizer=tf.keras.regularizers.l2(l2_rate))( conv1 )
+    #lstm = tf.keras.layers.Activation( 'elu'  )( lstm )
 
     #MOJA ROKA
     roka_input = tf.keras.layers.Input( shape=(time, 54),name='Roka' )
     #roka = Dense(16,activation='elu')(roka_input)
     #roka = BatchNormalization()(roka)
-    roka = tf.keras.layers.CuDNNLSTM(16,return_sequences=True,kernel_regularizer=tf.keras.regularizers.l2(l2_rate),bias_regularizer=tf.keras.regularizers.l2(l2_rate))(roka_input)
+    roka = tf.keras.layers.CuDNNLSTM(32,return_sequences=True,kernel_regularizer=tf.keras.regularizers.l2(l2_rate),bias_regularizer=tf.keras.regularizers.l2(l2_rate))(roka_input)
     #roka = CuDNNGRU(20,return_sequences=True)(roka)
-    roka = tf.keras.layers.TimeDistributed( tf.keras.layers.Activation( 'elu' ) )( roka )
+    #roka = tf.keras.layers.Activation( 'elu' ) ( roka )
 
     #zdruzi
     #print(lstm.shape,roka.shape)
@@ -89,20 +85,27 @@ def test_navadna_mreza(lr,l2_rate=0.001):
     #kraj
     kralj = tf.keras.layers.Input((4,),name='Kralj')
     index_tistega_ki_igra = tf.keras.layers.Input((4,),name='Tisti_ki_igra')
-    concat = tf.keras.layers.Concatenate()([lstm,kralj,talon,index_tistega_ki_igra])
+    zalozil_input = tf.keras.layers.Input((54,),name='Zalozil_input')
+    concat = tf.keras.layers.Concatenate()([lstm,kralj,talon,index_tistega_ki_igra,zalozil_input])
 
-    output_layer = tf.keras.layers.Dense( 16, activation='elu',kernel_regularizer=tf.keras.regularizers.l2(l2_rate),bias_regularizer=tf.keras.regularizers.l2(l2_rate) )(concat )
+    output_layer = tf.keras.layers.Dense( 32, activation='elu',kernel_regularizer=tf.keras.regularizers.l2(l2_rate),bias_regularizer=tf.keras.regularizers.l2(l2_rate) )(concat )
 
     output_layer = tf.keras.layers.BatchNormalization()(output_layer)
     output_layer = tf.keras.layers.Dropout(0.2)(output_layer)
     #output_layer = Dense( 54, activation='elu' )(output_layer )
+    output_layer = tf.keras.layers.Dense( 32, activation='elu', kernel_regularizer=tf.keras.regularizers.l2( l2_rate ),
+                                          bias_regularizer=tf.keras.regularizers.l2( l2_rate ) )( output_layer )
+
+    output_layer = tf.keras.layers.BatchNormalization()( output_layer )
+    output_layer = tf.keras.layers.Dropout( 0.2 )( output_layer )
+
     output_layer = tf.keras.layers.Dense( 54, activation=None )(output_layer )
 
     #mozne = Input( (54,), name='Mozne' )
     #output_layer = Multiply()( [output_layer, mozne] )
-    model = tf.keras.Model( inputs=[input_layer_nasprotiki,kralj,roka_input,talon_input,index_tistega_ki_igra], outputs=output_layer,name='Navadna')
-    model.compile( optimizer=tf.keras.optimizers.Adadelta(lr=lr),
-                   loss=tf.keras.losses.Huber(delta=15.0),
+    model = tf.keras.Model( inputs=[input_layer_nasprotiki,kralj,roka_input,talon_input,index_tistega_ki_igra,zalozil_input], outputs=output_layer,name='Navadna')
+    model.compile( optimizer=tf.keras.optimizers.Adam(lr=lr),
+                   loss=tf.keras.losses.Huber(delta=25.0),
                    metrics=['accuracy'] )
     model.summary()
     #from keras.utils import plot_model
@@ -121,11 +124,12 @@ def test_klop(lr,l2_rate=0.0001):
     n_filters = 10
     #NASPROTNIKI
     input_layer_nasprotiki = tf.keras.layers.Input( shape=(time, 3,channels),name='Nasprotniki' )
-    conv1 = tf.keras.layers.TimeDistributed(tf.keras.layers.Conv1D(n_filters,1,activation='elu',kernel_regularizer=tf.keras.regularizers.l2(l2_rate),bias_regularizer=tf.keras.regularizers.l2(l2_rate)))(input_layer_nasprotiki)
-    conv1 = tf.keras.layers.TimeDistributed(tf.keras.layers.Flatten())( conv1 )
-    #conv1 = Dense(16,activation='elu')( conv1 )
+    conv1 = tf.keras.layers.TimeDistributed( tf.keras.layers.Flatten() )( input_layer_nasprotiki )
+    conv1 = tf.keras.layers.TimeDistributed(
+        tf.keras.layers.Dense( 32, kernel_regularizer=tf.keras.regularizers.l2( l2_rate ),
+                               bias_regularizer=tf.keras.regularizers.l2( l2_rate ) ) )( conv1 )
     lstm = tf.keras.layers.CuDNNLSTM( 16, return_sequences=True,kernel_regularizer=tf.keras.regularizers.l2(l2_rate),bias_regularizer=tf.keras.regularizers.l2(l2_rate) )( conv1 )
-    lstm = tf.keras.layers.TimeDistributed( tf.keras.layers.Activation( 'elu' ) )( lstm )
+    lstm = tf.keras.layers.Activation( 'elu' ) ( lstm )
 
     #MOJA ROKA
     roka_input = tf.keras.Input( shape=(time, 54), name='Roka' )
@@ -133,7 +137,7 @@ def test_klop(lr,l2_rate=0.0001):
 
     #roka = BatchNormalization()( roka )
     roka = tf.keras.layers.CuDNNLSTM( 16, return_sequences=True ,kernel_regularizer=tf.keras.regularizers.l2(l2_rate),bias_regularizer=tf.keras.regularizers.l2(l2_rate))( roka_input )
-    roka = tf.keras.layers.TimeDistributed( tf.keras.layers.Activation( 'elu' ) )( roka )
+    roka = tf.keras.layers.Activation( 'elu'  )( roka )
 
     #talon
     talon_input = tf.keras.layers.Input( shape=( 54,),name='Talon' ) # 54 je tist k je vzeto iz talona
@@ -141,15 +145,13 @@ def test_klop(lr,l2_rate=0.0001):
     #talon = Dense( 20,activation='elu',return_sequences=True)(talon)
     #talon = Dense( 20,activation='elu')(talon_input)
 
-
     #zdruzi
     #print(lstm.shape,roka.shape)
     lstm = tf.keras.layers.Concatenate(axis=2,name='Konkat')([lstm,roka])
     lstm = tf.keras.layers.CuDNNLSTM(16,return_sequences=False,kernel_regularizer=tf.keras.regularizers.l2(l2_rate),bias_regularizer=tf.keras.regularizers.l2(l2_rate))(lstm)
     conncat = tf.keras.layers.Concatenate(name='Konkat_z_talonom')([lstm,talon_input])
 
-    output_layer = tf.keras.layers.Dense( 16, activation='elu',kernel_regularizer=tf.keras.regularizers.l2(l2_rate),bias_regularizer=tf.keras.regularizers.l2(l2_rate) )( conncat )
-
+    output_layer = tf.keras.layers.Dense( 32, activation='elu',kernel_regularizer=tf.keras.regularizers.l2(l2_rate),bias_regularizer=tf.keras.regularizers.l2(l2_rate) )( conncat )
     output_layer = tf.keras.layers.BatchNormalization()(output_layer )
     output_layer = tf.keras.layers.Dropout(0.2)(output_layer )
     output_layer = tf.keras.layers.Dense( 32, activation='elu',kernel_regularizer=tf.keras.regularizers.l2(l2_rate),bias_regularizer=tf.keras.regularizers.l2(l2_rate) )(output_layer )
@@ -159,8 +161,8 @@ def test_klop(lr,l2_rate=0.0001):
     #mozne = Input( (54,), name='Mozne' )
     #output_layer = Multiply()( [output_layer, mozne] )
     model = tf.keras.Model( inputs=[input_layer_nasprotiki,roka_input,talon_input], outputs=output_layer,name='Klop' )
-    model.compile( optimizer=tf.keras.optimizers.Adadelta(lr=lr),
-                   loss=tf.keras.losses.Huber(delta=15.0),
+    model.compile( optimizer=tf.keras.optimizers.Adam(lr=lr),
+                   loss=tf.keras.losses.Huber(delta=25.0),
                    metrics=['accuracy'] )
     model.summary()
 
@@ -181,36 +183,45 @@ def test_solo(lr,l2_rate=0.0001):
     n_filters = 10
     #NASPROTNIKI
     input_layer_nasprotiki = tf.keras.layers.Input( shape=(time, 3,channels),name='Nasprotniki' )
-    conv1 = tf.keras.layers.TimeDistributed(tf.keras.layers.Conv1D(n_filters,1,activation='elu'))(input_layer_nasprotiki)
-    #conv1 = ConvLSTM2D(filters=n_filters,kernel_size=(1,1),return_sequences=True,activation='elu')( input_layer_nasprotiki )
-    conv1 = tf.keras.layers.TimeDistributed(tf.keras.layers.Flatten())( conv1 )
-    conv1 = tf.keras.layers.Dense(30,activation='elu')( conv1 )
-    lstm = tf.keras.layers.CuDNNLSTM( 32, return_sequences=True )( conv1 )
+    conv1 = tf.keras.layers.TimeDistributed( tf.keras.layers.Flatten() )( input_layer_nasprotiki )
+    conv1 = tf.keras.layers.TimeDistributed(
+        tf.keras.layers.Dense( 32, kernel_regularizer=tf.keras.regularizers.l2( l2_rate ),
+                               bias_regularizer=tf.keras.regularizers.l2( l2_rate ) ) )( conv1 )
+    conv1 = tf.keras.layers.TimeDistributed( tf.keras.layers.Flatten() )( conv1 )
+
     #MOJA ROKA
     roka_input = tf.keras.layers.Input( shape=(time, 54), name='Roka' )
     roka = tf.keras.layers.Dense( 30, activation='elu' )(roka_input)
     roka = tf.keras.layers.CuDNNLSTM( 20, return_sequences=True )( roka )
 
     #zdruzi
+    lstm = tf.keras.layers.CuDNNLSTM( 32, return_sequences=True, kernel_regularizer=tf.keras.regularizers.l2( l2_rate ),
+                                      bias_regularizer=tf.keras.regularizers.l2( l2_rate ) )( conv1 )
+    lstm = tf.keras.layers.Activation('elu')(lstm)
     lstm = tf.keras.layers.Concatenate(axis=2,name='Konkat')([lstm,roka])
-    lstm = tf.keras.layers.CuDNNLSTM(30)(lstm)
+    lstm = tf.keras.layers.CuDNNLSTM(32, kernel_regularizer=tf.keras.regularizers.l2( l2_rate ),
+                                      bias_regularizer=tf.keras.regularizers.l2( l2_rate ))(lstm)
 
     #talon
     talon_input = tf.keras.layers.Input( shape=( 6,55),name='Talon' ) # 55 je tist k je vzeto iz talona
     talon = tf.keras.layers.Flatten()(talon_input) # 55 je tist k je vzeto iz talona
-    talon = tf.keras.layers.Dense( 20,activation='elu' )(talon)
 
+    index_tistega_ki_igra = tf.keras.layers.Input((4,),name='Tisti_ki_igra')
+    zalozil_input = tf.keras.layers.Input( (54,), name='Zalozil_input' )
 
-    index_tistega_ki_igra = tf.keras.layers.Input((4,),name='Tisti_ki_igra') # ali igram jaz ali ne 1 ali -1
-    concat = tf.keras.layers.Concatenate()([lstm,talon,index_tistega_ki_igra])
+    concat = tf.keras.layers.Concatenate()([lstm,talon,index_tistega_ki_igra,zalozil_input])
 
-    output_layer = tf.keras.layers.Dense( 54, activation='elu' )(concat )
-    output_layer = tf.keras.layers.Dense( 54, activation='elu' )(output_layer )
+    output_layer = tf.keras.layers.Dense( 32, activation='elu',kernel_regularizer=tf.keras.regularizers.l2(l2_rate),bias_regularizer=tf.keras.regularizers.l2(l2_rate) )( concat )
+    output_layer = tf.keras.layers.BatchNormalization()(output_layer )
+    output_layer = tf.keras.layers.Dropout(0.2)(output_layer )
+    output_layer = tf.keras.layers.Dense( 32, activation='elu',kernel_regularizer=tf.keras.regularizers.l2(l2_rate),bias_regularizer=tf.keras.regularizers.l2(l2_rate) )(output_layer )
+    output_layer = tf.keras.layers.BatchNormalization()(output_layer )
     output_layer = tf.keras.layers.Dense( 54, activation=None )(output_layer )
 
-    model = tf.keras.Model( inputs=[input_layer_nasprotiki,roka_input,talon_input,index_tistega_ki_igra], outputs=output_layer,name='Solo' )
-    model.compile( optimizer=tf.keras.optimizers.Adadelta(learning_rate=lr),
-                   loss=tf.keras.losses.Huber(delta=15.0),
+
+    model = tf.keras.Model( inputs=[input_layer_nasprotiki,roka_input,talon_input,index_tistega_ki_igra,zalozil_input], outputs=output_layer,name='Solo' )
+    model.compile( optimizer=tf.keras.optimizers.Adam(learning_rate=lr),
+                   loss=tf.keras.losses.Huber(delta=25.0),
                    metrics=['accuracy'] )
     model.summary()
     return model
@@ -221,34 +232,39 @@ def test_berac(lr,l2_rate=0.0001):
     n_filters = 10
     #NASPROTNIKI
     input_layer_nasprotiki = tf.keras.layers.Input( shape=(time, 3,channels),name='Nasprotniki' )
-    conv1 = tf.keras.layers.TimeDistributed(tf.keras.layers.Conv1D(n_filters,1,activation='elu',kernel_regularizer=tf.keras.regularizers.l2(l2_rate),bias_regularizer=tf.keras.regularizers.l2(l2_rate)))(input_layer_nasprotiki)
-    #conv1 = ConvLSTM2D(filters=n_filters,kernel_size=(1,1),return_sequences=True,activation='elu')( input_layer_nasprotiki )
-    conv1 = tf.keras.layers.TimeDistributed(tf.keras.layers.Flatten())( conv1 )
-    conv1 = tf.keras.layers.Dense(30,activation='elu',kernel_regularizer=tf.keras.regularizers.l2(l2_rate),bias_regularizer=tf.keras.regularizers.l2(l2_rate))( conv1 )
+    conv1 = tf.keras.layers.TimeDistributed( tf.keras.layers.Flatten() )( input_layer_nasprotiki )
+    conv1 = tf.keras.layers.TimeDistributed(
+        tf.keras.layers.Dense( 32, kernel_regularizer=tf.keras.regularizers.l2( l2_rate ),
+                               bias_regularizer=tf.keras.regularizers.l2( l2_rate ) ) )( conv1 )
+    conv1 = tf.keras.layers.TimeDistributed( tf.keras.layers.Flatten() )( conv1 )
     lstm = tf.keras.layers.CuDNNLSTM( 32, return_sequences=True,kernel_regularizer=tf.keras.regularizers.l2(l2_rate),bias_regularizer=tf.keras.regularizers.l2(l2_rate) )( conv1 )
     lstm = tf.keras.layers.Activation( 'elu' )( lstm )
     #MOJA ROKA
     roka_input = tf.keras.layers.Input( shape=(time, 54), name='Roka' )
-    roka = tf.keras.layers.Dense( 30, activation='elu',kernel_regularizer=tf.keras.regularizers.l2(l2_rate),bias_regularizer=tf.keras.regularizers.l2(l2_rate) )(roka_input)
-    roka = tf.keras.layers.CuDNNLSTM( 20, return_sequences=True,kernel_regularizer=tf.keras.regularizers.l2(l2_rate),bias_regularizer=tf.keras.regularizers.l2(l2_rate) )( roka )
+    roka = tf.keras.layers.Dense( 32, activation='elu',kernel_regularizer=tf.keras.regularizers.l2(l2_rate),bias_regularizer=tf.keras.regularizers.l2(l2_rate) )(roka_input)
+    roka = tf.keras.layers.CuDNNLSTM( 32, return_sequences=True,kernel_regularizer=tf.keras.regularizers.l2(l2_rate),bias_regularizer=tf.keras.regularizers.l2(l2_rate) )( roka )
     roka = tf.keras.layers.Activation( 'elu' )( roka )
 
     #zdruzi
     lstm = tf.keras.layers.Concatenate(axis=2,name='Konkat')([lstm,roka])
-    lstm = tf.keras.layers.CuDNNLSTM(30,kernel_regularizer=tf.keras.regularizers.l2(l2_rate),bias_regularizer=tf.keras.regularizers.l2(l2_rate))(lstm)
+    lstm = tf.keras.layers.CuDNNLSTM(32,kernel_regularizer=tf.keras.regularizers.l2(l2_rate),bias_regularizer=tf.keras.regularizers.l2(l2_rate))(lstm)
     lstm = tf.keras.layers.Activation('elu')(lstm)
 
     index_tistega_ki_igra = tf.keras.layers.Input((4,),name='Tisti_ki_igra') # ali igram jaz ali ne 1 ali -1
 
     concat = tf.keras.layers.Concatenate()([lstm,index_tistega_ki_igra])
 
-    output_layer = tf.keras.layers.Dense( 54, activation='elu',kernel_regularizer=tf.keras.regularizers.l2(l2_rate),bias_regularizer=tf.keras.regularizers.l2(l2_rate) )(concat )
-    output_layer = tf.keras.layers.Dense( 54, activation='elu',kernel_regularizer=tf.keras.regularizers.l2(l2_rate),bias_regularizer=tf.keras.regularizers.l2(l2_rate) )(output_layer )
+
+    output_layer = tf.keras.layers.Dense( 32, activation='elu',kernel_regularizer=tf.keras.regularizers.l2(l2_rate),bias_regularizer=tf.keras.regularizers.l2(l2_rate) )( concat )
+    output_layer = tf.keras.layers.BatchNormalization()(output_layer )
+    output_layer = tf.keras.layers.Dropout(0.2)(output_layer )
+    output_layer = tf.keras.layers.Dense( 32, activation='elu',kernel_regularizer=tf.keras.regularizers.l2(l2_rate),bias_regularizer=tf.keras.regularizers.l2(l2_rate) )(output_layer )
+    output_layer = tf.keras.layers.BatchNormalization()(output_layer )
     output_layer = tf.keras.layers.Dense( 54, activation=None )(output_layer )
 
     model = tf.keras.Model( inputs=[input_layer_nasprotiki,roka_input,index_tistega_ki_igra], outputs=output_layer, name='Berac' )
-    model.compile( optimizer=tf.keras.optimizers.Adadelta( learning_rate=lr ),
-                   loss=tf.keras.losses.Huber( delta=15.0 ),
+    model.compile( optimizer=tf.keras.optimizers.Adam( learning_rate=lr ),
+                   loss=tf.keras.losses.Huber( delta=25.0 ),
                    metrics=['accuracy'] )
 
     #batch = 80
