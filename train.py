@@ -26,7 +26,6 @@ def model_za_vrednotenje_roke(lr,l2_rate=0.001):
     model.summary()
     return model
 
-
 def model_za_zalaganje(lr,l2_rate=0.001):
     talon_input = tf.keras.layers.Input( shape=(54,6), name='Talon') # prva dim karta v drugo smer v kerem izmed 6 kupckov je
     talon = tf.keras.layers.Flatten()(talon_input)
@@ -48,7 +47,6 @@ def model_za_zalaganje(lr,l2_rate=0.001):
                    metrics=['accuracy'] )
     model.summary()
     return model
-
 
 def test_navadna_mreza(lr,l2_rate=0.001):
     time = None
@@ -175,7 +173,6 @@ def test_klop(lr,l2_rate=0.0001):
     #X = [np.random.random((batch,time,3,54)),  np.random.random((batch,time,54)), np.random.random((batch,time,54)), np.random.random((batch,54))]
     #model.fit(X,np.random.random((batch,54)),batch_size=8,epochs=2)
     return model
-
 
 def test_solo(lr,l2_rate=0.0001):
     time = None

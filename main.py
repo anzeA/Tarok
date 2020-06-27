@@ -1,20 +1,21 @@
 import os
 import random
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2' #INFO and WARNING messages are not printed
-print('Tensorflow INFO and WARNING messages are not printed')
+import torch
 import gc
 import pickle
 import time
 from datetime import datetime
 from random import shuffle
-import tensorflow as tf
-import train
+#import tensorflow as tf
+#import train
 from Igralec import Bot_igralec, Nevronski_igralec, Double_Nevronski_Igralec
 from Tarok import Tarok
 import numpy as np
 import shutil
 from matplotlib import pyplot as plt
+import pytorch_lightning as pl
+
 def plot_score(path):
     plt.clf()
     plt.close()
@@ -32,7 +33,7 @@ def plot_score(path):
     plt.legend(keys)
     plt.show()
     plt.clf()
-
+    '''
     keys = list(loss[0].keys())
     keys.sort()
     for k in keys:
@@ -42,6 +43,7 @@ def plot_score(path):
     plt.legend( keys )
     plt.title('Loss za bazo:'+str(path))
     plt.show()
+    '''
 #TODO pohendli ce so gor skis 21 in palcka da palcka pobere
 def naredi_nove_igralce_debug(path,**kwargs):
     os.mkdir(path)
@@ -105,7 +107,7 @@ def main(dir,**kwargs):
     with open( loss_file, "rb" ) as input_file:
         loss = pickle.load( input_file )
 
-    num_games= 500
+    num_games= 2000
     for i in range( 1000 ):
         shuffle(igralci)
         t = time.time()
@@ -151,6 +153,9 @@ def main(dir,**kwargs):
             print([str(k)+': '+str(r[k]) for k in keys])
         if len(scores) > 0 and len(loss) >0:
             plot_score(dir)
+        shutil.rmtree('lightning_logs')
+
+
 if __name__ == '__main__':
 
 
@@ -160,16 +165,16 @@ if __name__ == '__main__':
 
     #main('scores_2.pickle',models_files=['modeli_lr_0.01/model'+str(i)+'/' for i in range(1,5)])
     #main(*naredi_nove_igralce('test_max'))
-    print('Support Cuda:',tf.test.is_built_with_cuda())
-    print('Tf version:',tf.__version__)
-    try:
-        shutil.rmtree('test_nan')
-    except Exception as e:
-        print(e)
+    print(torch.__version__)
+    print(torch.cuda.is_available())
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    print(device)
     #main('test_nan',learning_rate=0.01,debug=True)
     #os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
     #random.seed(42)
     #main('test_double_1e-2_solo',learning_rate=0.01,debug=False) # Nadaljuj super rezultati
     #main('test_double_1e-2_solo',learning_rate=0.01,debug=False) # Nadaljuj super rezultati
     #main('Pararel_Adam_1e-2',learning_rate=0.01,debug=False) # Nadaljuj super rezultati
-    main('Pararel_Adam_200_1e-2',learning_rate=0.01,debug=False)
+    #Nevronski_igralec(save_path='Torch_test')
+    #shutil.rmtree('Torch_test')
+    main('Torch_first_run',learning_rate=0.01,debug=False)
